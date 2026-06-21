@@ -1,0 +1,41 @@
+* { box-sizing: border-box; font-family: "맑은 고딕", system-ui, sans-serif; }
+body { margin: 0; display: flex; height: 100vh; }
+#sidebar { width: 280px; border-right: 1px solid #ddd; overflow-y: auto; }
+#sidebar .bar { display: flex; gap: 4px; padding: 8px; position: sticky; top: 0; background: #fff; }
+#studentList { list-style: none; margin: 0; padding: 0; }
+#studentList li { padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+#studentList li.sel { background: #eef4ff; }
+.badge { float: right; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #eee; }
+.badge.완료 { background: #cdeccd; } .badge.검증 { background: #fff0c2; } .badge.초안 { background: #e3e3e3; }
+#main { flex: 1; display: flex; flex-direction: column; padding: 12px; overflow-y: auto; }
+#tabs button { padding: 6px 12px; border: none; background: #f0f0f0; margin-right: 4px; cursor: pointer; }
+#tabs button.sel { background: #2d6cdf; color: #fff; }
+.gauge .track { height: 8px; background: #eee; border-radius: 4px; overflow: hidden; }
+.gauge #gaugeFill { height: 100%; background: #2d6cdf; width: 0; }
+.gauge.over #gaugeFill { background: #d33; } .gauge.full #gaugeFill { background: #2faa55; } .gauge.low #gaugeFill { background: #e0a020; }
+textarea { width: 100%; min-height: 120px; font-size: 15px; line-height: 1.6; }
+.row { display: flex; gap: 8px; margin-top: 8px; } .row label { flex: 1; font-size: 13px; }
+.row textarea { min-height: 50px; }
+.forbidden { color: #d33; font-size: 13px; } .books { font-size: 13px; color: #555; margin-top: 6px; }
+.legacy { border: 1px dashed #bbb; padding: 8px; margin-top: 10px; }
+.viewbar { display: flex; gap: 4px; padding: 4px 8px; border-bottom: 1px solid #eee; }
+.viewbar button { flex: 1; padding: 5px; border: 1px solid #ddd; background: #fafafa; cursor: pointer; font-size: 12px; }
+.viewbar button.sel { background: #2d6cdf; color: #fff; border-color: #2d6cdf; }
+.row.quality label { display: flex; flex-direction: column; font-size: 12px; }
+.row.quality input[type=number] { width: 56px; }
+.row.quality .chk { flex-direction: row; align-items: center; gap: 4px; }
+#promoteBtn { background: #2faa55; color: #fff; border: none; padding: 4px 10px; cursor: pointer; }
+.edits { margin-top: 10px; font-size: 12px; }
+.edits .edit { border-left: 3px solid #2d6cdf; padding: 4px 8px; margin: 6px 0; background: #f7f9ff; }
+.edits .b { color: #b00; } .edits .a { color: #096; } .edits .t { color: #888; }
+.progbar { height: 14px; background: #eee; border-radius: 7px; overflow: hidden; }
+.progbar .fill { height: 100%; background: #2faa55; }
+.summary { font-size: 13px; margin: 6px 0; color: #444; }
+.dashfilter { margin: 8px 0; font-size: 13px; }
+table.dash { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.dash th, table.dash td { border: 1px solid #e0e0e0; padding: 4px 6px; text-align: center; }
+table.dash td.cell small { color: #777; }
+td.st-완료 { background: #cdeccd; } td.st-검증 { background: #fff0c2; } td.st-초안 { background: #ececec; } td.st-미작성 { background: #fde2e2; }
+td.cell.dim { opacity: 0.25; }
+.warn { color: #b00; padding: 4px 0; font-size: 13px; }
+.muted { color: #999; font-size: 13px; }

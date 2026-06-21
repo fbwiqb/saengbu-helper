@@ -1,0 +1,10 @@
+node_modules/
+dist/
+out/
+*.db
+*.db-*
+data/*.json
+!data/forbidden.json
+!data/roster.sample.json
+*.log
+.DS_Store

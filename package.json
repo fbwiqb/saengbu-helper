@@ -1,0 +1,16 @@
+{
+  "name": "saengbu-helper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "cli": "node cli/saengbu-cli.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.19.2"
+  },
+  "description": "생기부 입력 도우미 (교사용 데스크톱)"
+}
