@@ -1,6 +1,6 @@
 {
   "name": "saengbu-helper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "commonjs",
   "main": "main.js",
@@ -42,7 +42,8 @@
     "publish": {
       "provider": "github",
       "owner": "fbwiqb",
-      "repo": "saengbu-helper"
+      "repo": "saengbu-helper",
+      "releaseType": "release"
     }
   },
   "description": "생기부 입력 도우미 (교사용 데스크톱)"
