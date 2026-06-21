@@ -29,7 +29,7 @@ function showToast(msg) {
 }
 
 async function copyArea() {
-  const text = ($('#revised').value || $('#body').value).replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
+  const text = $('#body').value.replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
   if (!text) { showToast('복사할 내용이 없습니다'); return; }
   try {
     await navigator.clipboard.writeText(text);
@@ -54,8 +54,6 @@ async function boot() {
   $('#body').addEventListener('input', renderAssist);
   $('#saveBtn').onclick = saveRecord;
   $('#copyBtn').onclick = copyArea;
-  $('#lgSave').onclick = saveLegacy;
-  $('#promoteBtn').onclick = promote;
   $('#nextBtn').onclick = gotoNextUnwritten;
   $('#vStudent').onclick = () => setView('student');
   $('#vDash').onclick = () => setView('dash');
@@ -114,16 +112,9 @@ async function openStudent(hakbun) {
   const g = state.group || '';
   const s = state.student;
   $('#headInfo').innerHTML = `${esc(s.hakbun)} ${esc(s.name)}<span class="sub">내신 ${esc(s.naesin ?? '-')} · ${esc(s.jeonhyeong || '-')} · [${esc(g)}]${(s.groups || []).length > 1 ? ' · 소속 ' + esc((s.groups || []).join(',')) : ''}</span>`;
-  const isHomeroom = g.includes('담임');
   const areas = areasFor(g);
   $('#tabs').innerHTML = areas.map((a) => `<button data-a="${esc(a)}">${esc(a)}</button>`).join('');
   $('#tabs').querySelectorAll('button').forEach((b) => { b.onclick = () => selectArea(b.dataset.a); });
-  $('#legacyBox').hidden = !isHomeroom;
-  if (isHomeroom) {
-    $('#lgDup').value = s.legacy.dup_avoid || '';
-    $('#lgGrowth').value = s.legacy.growth_link || '';
-    $('#lgGap').value = s.legacy.gap_fill || '';
-  }
   loadList();
   selectArea(areas[0]);
 }
@@ -134,14 +125,7 @@ function selectArea(area) {
   $('#tabs').querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.a === area));
   const rec = (state.student.records || []).find((r) => r.area === area && r.subject === state.subject) || {};
   $('#body').value = rec.body || '';
-  $('#revised').value = rec.revised || '';
-  $('#reason').value = rec.reason || '';
   $('#status').value = rec.status || '미작성';
-  $('#qExp').value = rec.q_exp ?? '';
-  $('#qThink').value = rec.q_think ?? '';
-  $('#qGrowth').value = rec.q_growth ?? '';
-  $('#qAuthentic').value = rec.q_authentic ?? '';
-  $('#accepted').checked = !!rec.accepted;
   renderAssist();
   renderBooks();
   renderEdits();
@@ -220,21 +204,10 @@ async function renderEdits() {
 async function saveRecord() {
   const url = `/api/records/${state.hakbun}/${encodeURIComponent(state.area)}?subject=${encodeURIComponent(state.subject)}`;
   state.student = await j(url, { method: 'PUT', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      body: $('#body').value, revised: $('#revised').value, reason: $('#reason').value, status: $('#status').value,
-      q_exp: $('#qExp').value, q_think: $('#qThink').value, q_growth: $('#qGrowth').value, q_authentic: $('#qAuthentic').value,
-      accepted: $('#accepted').checked,
-    }) });
+    body: JSON.stringify({ body: $('#body').value, status: $('#status').value }) });
   renderBooks();
   renderEdits();
   loadList();
-}
-
-async function promote() {
-  if (!state.hakbun || !state.area) return;
-  const url = `/api/promote/${state.hakbun}/${encodeURIComponent(state.area)}?subject=${encodeURIComponent(state.subject)}`;
-  const r = await j(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-  alert(r.error ? '승격 실패: ' + r.error : '우수예시로 승격되었습니다.');
 }
 
 async function renderDash() {
@@ -266,11 +239,6 @@ async function renderOverlap() {
     ? o.similarPairs.map((p) =>
         `<div class="warn">⚠ ${esc(p.area)} · ${esc(p.a.hakbun + ' ' + p.a.name)} ↔ ${esc(p.b.hakbun + ' ' + p.b.name)} · 유사도 ${p.score}</div>`).join('')
     : '<p class="muted">유사도 0.3 이상 쌍 없음</p>';
-}
-
-async function saveLegacy() {
-  await j('/api/legacy/' + state.hakbun, { method: 'PUT', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ dup_avoid: $('#lgDup').value, growth_link: $('#lgGrowth').value, gap_fill: $('#lgGap').value }) });
 }
 
 boot();
