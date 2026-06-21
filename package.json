@@ -3,14 +3,47 @@
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
+  "main": "main.js",
   "scripts": {
     "start": "node src/index.js",
+    "electron": "electron .",
     "test": "node --test",
-    "cli": "node cli/saengbu-cli.js"
+    "cli": "node cli/saengbu-cli.js",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "electron-updater": "^6.2.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.cnsa.saengbuhelper",
+    "productName": "생기부 입력 도우미",
+    "files": [
+      "main.js",
+      "src/**/*",
+      "public/**/*",
+      "data/**/*",
+      "!**/*.db",
+      "!**/*.db-*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "fbwiqb",
+      "repo": "saengbu-helper"
+    }
   },
   "description": "생기부 입력 도우미 (교사용 데스크톱)"
 }

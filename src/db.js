@@ -63,9 +63,11 @@ function open(file) {
 function upsertStudent(db, s) {
   db.prepare(`INSERT INTO students (hakbun,name,group_tag,ban,beonho,gender,naesin,jeonhyeong,status)
     VALUES (@hakbun,@name,@group_tag,@ban,@beonho,@gender,@naesin,@jeonhyeong,COALESCE(@status,'미작성'))
-    ON CONFLICT(hakbun) DO UPDATE SET name=excluded.name, group_tag=excluded.group_tag,
-      ban=excluded.ban, beonho=excluded.beonho, gender=excluded.gender,
-      naesin=excluded.naesin, jeonhyeong=excluded.jeonhyeong, updated_at=datetime('now')`)
+    ON CONFLICT(hakbun) DO UPDATE SET name=COALESCE(excluded.name, students.name),
+      group_tag=COALESCE(excluded.group_tag, students.group_tag),
+      ban=COALESCE(excluded.ban, students.ban), beonho=COALESCE(excluded.beonho, students.beonho),
+      gender=COALESCE(excluded.gender, students.gender), naesin=COALESCE(excluded.naesin, students.naesin),
+      jeonhyeong=COALESCE(excluded.jeonhyeong, students.jeonhyeong), updated_at=datetime('now')`)
     .run({ name: null, group_tag: null, ban: null, beonho: null, gender: null, naesin: null, jeonhyeong: null, status: null, ...s });
   if (s.group_tag) {
     db.prepare('INSERT OR IGNORE INTO memberships (hakbun, group_tag) VALUES (?, ?)').run(s.hakbun, s.group_tag);

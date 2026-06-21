@@ -14,6 +14,25 @@ test('학생 upsert + 목록 + 조회', () => {
   assert.strictEqual(list[0].naesin, 5.9);
 });
 
+test('재import 시 person 필드 null로 덮어쓰지 않음 (COALESCE 보존)', () => {
+  const db = freshDb();
+  upsertStudent(db, { hakbun: '30404', name: '홍길동', group_tag: '3-4담임', naesin: 2.31, ban: '4', jeonhyeong: '학종' });
+  upsertStudent(db, { hakbun: '30404', group_tag: '통합과학1' });
+  const s = getStudent(db, '30404');
+  assert.strictEqual(s.naesin, 2.31);
+  assert.strictEqual(s.name, '홍길동');
+  assert.strictEqual(s.ban, '4');
+  assert.strictEqual(s.jeonhyeong, '학종');
+  assert.deepStrictEqual([...s.groups].sort(), ['3-4담임', '통합과학1']);
+});
+
+test('새 값이 주어지면 갱신됨', () => {
+  const db = freshDb();
+  upsertStudent(db, { hakbun: '30404', name: '홍길동', naesin: 2.31 });
+  upsertStudent(db, { hakbun: '30404', naesin: 2.10 });
+  assert.strictEqual(getStudent(db, '30404').naesin, 2.10);
+});
+
 test('레코드 upsert는 영역+과목 유니크', () => {
   const db = freshDb();
   upsertStudent(db, { hakbun: '30404', name: '홍길동', group_tag: '3-4담임' });
