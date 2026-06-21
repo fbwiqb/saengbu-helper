@@ -14,6 +14,34 @@ function calcBytes(text) {
   return b;
 }
 
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;z-index:9999;opacity:0;transition:opacity .2s;box-shadow:0 4px 16px rgba(0,0,0,.25)';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { t.style.opacity = '0'; }, 1900);
+}
+
+async function copyArea() {
+  const text = ($('#revised').value || $('#body').value).replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
+  if (!text) { showToast('복사할 내용이 없습니다'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    const limit = state.targets[state.area] || 0;
+    const b = calcBytes(text);
+    const over = limit && b > limit ? ' ⚠ 한도초과' : '';
+    showToast(`✓ 복사됨 · ${b}${limit ? '/' + limit : ''} byte${over} · NEIS에 붙여넣기`);
+  } catch (e) {
+    showToast('복사 실패 — 브라우저 권한 확인');
+  }
+}
+
 async function boot() {
   state.targets = await j('/api/byte-targets');
   state.forbidden = await j('/api/forbidden');
@@ -25,7 +53,7 @@ async function boot() {
   $('#addBtn').onclick = addStudent;
   $('#body').addEventListener('input', renderAssist);
   $('#saveBtn').onclick = saveRecord;
-  $('#copyBtn').onclick = () => navigator.clipboard.writeText($('#revised').value || $('#body').value);
+  $('#copyBtn').onclick = copyArea;
   $('#lgSave').onclick = saveLegacy;
   $('#promoteBtn').onclick = promote;
   $('#nextBtn').onclick = gotoNextUnwritten;
