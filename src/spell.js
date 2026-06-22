@@ -72,6 +72,13 @@ function stripTags(s) {
   return String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
 
+const STYLE_HELP_RE = /\[[^\]]*(?:신문|일보|뉴스|방송|투데이)[^\]]*\]|버릇|번역\s*투|외래어\s*영향|일본어\s*투|영어\s*투/;
+
+function isStylistic(e) {
+  if (e && (e.correctMethod === 4 || e.correctMethod === 7)) return true;
+  return STYLE_HELP_RE.test((e && e.help) || '');
+}
+
 function parse(html) {
   const m = html.match(/data\s*=\s*(\[[\s\S]*?\]);/);
   if (!m) return null;
@@ -84,6 +91,7 @@ function parse(html) {
         orig: e.orgStr || '',
         suggest: String(e.candWord || '').split('|').map((s) => s.trim()).filter(Boolean),
         help: stripTags(e.help),
+        correctMethod: Number(e.correctMethod) || 0,
       });
     }
   }
@@ -120,7 +128,7 @@ async function check(text) {
     all.push(...errs);
   }
   const seen = new Set();
-  return all.filter((e) => {
+  return all.filter((e) => !isStylistic(e)).filter((e) => {
     const k = e.orig + '|' + e.help;
     if (seen.has(k)) return false;
     seen.add(k);
@@ -128,4 +136,4 @@ async function check(text) {
   });
 }
 
-module.exports = { check, parse, chunk };
+module.exports = { check, parse, chunk, isStylistic };
