@@ -342,8 +342,11 @@ mark.hl { background: #fff07a; color: inherit; border-radius: 3px; padding: 0 1p
 .warn-item.warn { color: var(--amber); }
 
 /* ===== Edit toolbar + sentence view ===== */
-.editbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.editbar { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 8px; }
 .editbar .sel { background: var(--accent); color: #fbf7ef; border-color: var(--accent); }
+.hl-head .hl-clear { font-size: 11.5px; padding: 1px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer; }
+.hl-head .hl-clear:hover { border-color: var(--accent); color: var(--accent-ink); }
+.mg-byte { padding: 2px 6px; font-size: 12px; border-radius: 6px; }
 .sent-view {
   min-height: 340px; max-height: 60vh; overflow-y: auto; padding: 4px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
@@ -424,12 +427,29 @@ mark.hl { background: #fff07a; color: inherit; border-radius: 3px; padding: 0 1p
 .tmpl-cats label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .tmpl-cats input { accent-color: var(--accent); }
 .tmpl-cats #tmplLink { margin-left: auto; }
-.upload-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 12px 0; align-items: stretch; }
-.upload-cols .dropzone { margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.paste-area { display: flex; flex-direction: column; gap: 6px; }
-.paste-area textarea { flex: 1; min-height: 96px; resize: vertical; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; outline: none; }
-.paste-area textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.paste-area #pasteBtn { align-self: flex-start; }
+.upload-cols { display: grid; grid-template-columns: 1fr 1.1fr; gap: 16px; margin: 12px 0; align-items: stretch; }
+.upload-left { display: flex; flex-direction: column; gap: 12px; }
+.upload-left .dropzone { margin: 0; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.upload-right { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--surface-2); }
+.up-actions { display: flex; align-items: center; gap: 8px; }
+.up-actions .spacer { flex: 1; }
+.up-tbl.edit td { padding: 2px 4px; }
+.up-in { width: 100%; padding: 4px 7px; border: 1px solid var(--line); border-radius: 6px; font-size: 12.5px; outline: none; }
+.up-in:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.up-rm { border: none; background: none; color: var(--ink-faint); cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 6px; }
+.up-rm:hover { color: #c0392b; background: var(--surface-2); }
+.up-prev-head { font-family: var(--font-head); font-weight: 700; font-size: 13px; color: var(--ink); }
+.up-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.up-tab { padding: 5px 11px; font-size: 12.5px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer; }
+.up-tab.sel { background: var(--accent); color: #fbf7ef; border-color: var(--accent); }
+.up-tab-n { font-variant-numeric: tabular-nums; opacity: .8; }
+.up-prev-list { flex: 1; min-height: 240px; max-height: 52vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.up-list-head { font-size: 13px; margin-bottom: 6px; }
+.up-list-head .up-cat { color: var(--accent); font-weight: 800; }
+.up-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.up-tbl th { text-align: left; color: var(--ink-faint); font-weight: 700; font-size: 11.5px; border-bottom: 1px solid var(--line); padding: 4px 6px; position: sticky; top: 0; background: var(--surface); }
+.up-tbl td { padding: 4px 6px; border-bottom: 1px solid var(--line-soft); font-variant-numeric: tabular-nums; }
+#upRegisterBtn { align-self: stretch; padding: 10px; font-size: 14px; }
 .mg-sum { font-size: 13px; color: var(--ink-soft); font-weight: 600; margin-bottom: 8px; }
 .mg-cat-h { font-family: var(--font-head); font-weight: 800; font-size: 12px; color: var(--accent); margin: 12px 0 4px; }
 .mg-grp { border-bottom: 1px solid var(--line-soft); }

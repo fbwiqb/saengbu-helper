@@ -51,6 +51,10 @@ function createApp(db) {
       res.status(400).json({ error: String(e.message || e) });
     }
   });
+  app.put('/api/groups/:tag/byte', (req, res) => {
+    const v = db_.setGroupByte(db, req.params.tag, (req.body || {}).byte_limit);
+    res.json({ ok: true, byte_limit: v });
+  });
   app.delete('/api/students/:hakbun/membership/:tag', (req, res) => {
     db_.removeMembership(db, req.params.hakbun, req.params.tag);
     res.json({ ok: true });

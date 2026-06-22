@@ -7,6 +7,7 @@ const AREA_LABEL = {
   자율: '자율·자치활동', 진로: '진로활동', 동아리: '동아리활동',
   행특: '행동특성및종합의견', 세특: '세부능력및특기사항',
 };
+const CAT_LABEL = { 담임: '담임교사', 세특: '교과 담당교사', 동아리: '동아리 담당교사', 기타: '기타' };
 const CATEGORY_AREAS = {
   담임: ['자율', '진로', '행특'],
   세특: ['세특'],
@@ -59,12 +60,12 @@ function showToast(msg) {
   showToast._t = setTimeout(() => { t.style.opacity = '0'; }, 1900);
 }
 
-async function copyText(raw, area, label) {
+async function copyText(raw, area, label, limitArg) {
   const text = String(raw || '').replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
   if (!text) { showToast('복사할 내용이 없습니다'); return; }
   try {
     await navigator.clipboard.writeText(text);
-    const limit = state.targets[area] || 0;
+    const limit = limitArg != null ? limitArg : (state.targets[area] || 0);
     const b = calcBytes(text);
     const over = limit && b > limit ? ' ⚠ 한도초과' : '';
     showToast(`✓ ${label ? label + ' ' : ''}복사됨 · ${b}${limit ? '/' + limit : ''} byte${over} · NEIS에 붙여넣기`);
@@ -73,7 +74,17 @@ async function copyText(raw, area, label) {
   }
 }
 
-function copyArea() { return copyText($('#body').value, state.area); }
+function groupByteLimit(g) {
+  const grp = (state.groupsList || []).find((x) => x.group_tag === g);
+  if (grp && grp.byte_limit && PER_SUBJECT.has(grp.category)) return Number(grp.byte_limit);
+  return null;
+}
+
+function activeLimit(area, g) {
+  return groupByteLimit(g || state.group) || state.targets[area] || 0;
+}
+
+function copyArea() { return copyText($('#body').value, state.area, '', activeLimit(state.area)); }
 
 async function boot() {
   state.config = await j('/api/config');
@@ -89,6 +100,7 @@ async function boot() {
   $('#histModal').onclick = (e) => { if (e.target === $('#histModal')) closeHistory(); };
   $('#nextBtn').onclick = gotoNextUnwritten;
   $('#sentToggle').onclick = toggleSentMode;
+  $('#dejoinBtn').onclick = dejoinBody;
   $('#vStudent').onclick = () => setView('student');
   $('#vDash').onclick = () => setView('dash');
   $('#vSettings').onclick = () => setView('settings');
@@ -102,10 +114,8 @@ async function boot() {
   dz.ondragleave = () => dz.classList.remove('drag');
   dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('drag'); const f = e.dataTransfer.files[0]; if (f) previewUpload(f); };
   $('#upFile').onchange = (e) => { const f = e.target.files[0]; if (f) previewUpload(f); };
-  $('#pasteBtn').onclick = previewPaste;
-  $('#upConfirm').onclick = confirmUpload;
-  $('#upModalClose').onclick = () => { $('#upModal').hidden = true; };
-  $('#upModal').onclick = (e) => { if (e.target === $('#upModal')) $('#upModal').hidden = true; };
+  $('#upAddStuBtn').onclick = addUpStudent;
+  $('#upRegisterBtn').onclick = confirmUpload;
   $('#stuSearch').oninput = onSearch;
   $('#sortToggle').onclick = () => { state.sortUnwritten = !state.sortUnwritten; $('#sortToggle').textContent = state.sortUnwritten ? '미작성순' : '학번순'; renderTree(); };
   document.addEventListener('keydown', onKey);
@@ -337,7 +347,7 @@ async function gotoNextUnwritten() {
 
 function renderGauge() {
   const text = $('#body').value;
-  const limit = state.targets[state.area] || 0;
+  const limit = activeLimit(state.area) || 0;
   const bytes = calcBytes(text);
   const pct = limit ? (bytes / limit) * 100 : 0;
   const cls = bytes > limit ? 'over' : pct >= 95 ? 'full' : pct < 70 ? 'low' : 'ok';
@@ -389,35 +399,60 @@ function splitSentences(text) {
   return parts.map((s) => s.trim()).filter(Boolean);
 }
 
+function markTerm(s, term) {
+  return term ? esc(s).split(esc(term)).join(`<mark class="hl">${esc(term)}</mark>`) : esc(s);
+}
+
 function renderSentences(text) {
   const sents = splitSentences(text);
   if (!sents.length) { $('#sentView').innerHTML = '<div class="empty">본문이 비어 있음</div>'; return; }
-  $('#sentView').innerHTML = sents.map((s, i) => {
+  const term = state.hlTerm;
+  let head = '';
+  if (term) {
+    const count = text.split(term).length - 1;
+    head = `<div class="hl-head">‘<b>${esc(term)}</b>’ ${count}회 강조 · <button class="hl-clear" type="button">강조 해제</button></div>`;
+  }
+  const body = sents.map((s, i) => {
     const n = [...s].length;
     const long = n > 120;
     const veryLong = n > 160;
     const cls = veryLong ? 'sent vlong' : long ? 'sent long' : 'sent';
-    return `<div class="${cls}"><span class="sno">${i + 1}</span><span class="stx">${esc(s)}</span><span class="slen">${n}자 · ${calcBytes(s)}B</span></div>`;
+    return `<div class="${cls}"><span class="sno">${i + 1}</span><span class="stx">${markTerm(s, term)}</span><span class="slen">${n}자 · ${calcBytes(s)}B</span></div>`;
   }).join('');
+  $('#sentView').innerHTML = head + body;
+  const clr = $('#sentView').querySelector('.hl-clear');
+  if (clr) clr.onclick = () => { state.hlTerm = null; renderSentences($('#body').value); };
 }
 
 function showEdit() {
-  state.sentMode = false; state.hlMode = false;
+  state.sentMode = false; state.hlMode = false; state.hlTerm = null;
   $('#body').hidden = false; $('#sentView').hidden = true;
   $('#sentToggle').classList.remove('sel'); $('#sentToggle').textContent = '문장별 보기';
 }
 
 function toggleSentMode() {
   if (state.sentMode || state.hlMode) { showEdit(); return; }
-  state.sentMode = true;
+  state.sentMode = true; state.hlTerm = null;
   $('#sentToggle').classList.add('sel'); $('#sentToggle').textContent = '편집으로';
   $('#body').hidden = true; $('#sentView').hidden = false;
   renderSentences($('#body').value);
 }
 
+function dejoinBody() {
+  const before = $('#body').value;
+  const after = before.replace(/[ \t]*\r?\n[ \t]*/g, ' ').replace(/ {2,}/g, ' ').trim();
+  if (after === before) { showToast('제거할 줄바꿈이 없습니다'); return; }
+  $('#body').value = after;
+  state.dirty = true;
+  if (state.sentMode || state.hlMode) showEdit();
+  renderAssist();
+  showToast('✓ 줄바꿈 제거됨');
+}
+
 function highlightTerm(term) {
   if (!term) return;
-  state.hlMode = true; state.sentMode = false;
+  if (state.sentMode) { state.hlTerm = term; renderSentences($('#body').value); return; }
+  state.hlMode = true; state.sentMode = false; state.hlTerm = term;
   const text = $('#body').value;
   const html = esc(text).split(esc(term)).join(`<mark class="hl">${esc(term)}</mark>`).replace(/\n/g, '<br>');
   const count = text.split(term).length - 1;
@@ -592,10 +627,10 @@ async function renderDash() {
       const key = `${r.hakbun}|${c.area}|${c.subject || ''}`;
       const hasText = (c.body || '').trim().length > 0;
       if (hasText) dashBodies[key] = c.body;
-      const lim = state.targets[c.area] || 0;
+      const lim = c.limit || state.targets[c.area] || 0;
       const dim = filter && c.status !== filter ? ' dim' : '';
       const copyBtn = hasText
-        ? `<button class="cell-copy" data-key="${esc(key)}" data-area="${esc(c.area)}" title="${esc(c.area)} 복사">복사</button>`
+        ? `<button class="cell-copy" data-key="${esc(key)}" data-area="${esc(c.area)}" data-lim="${lim}" title="${esc(c.area)} 복사">복사</button>`
         : '<span class="row-copy-empty">–</span>';
       const writeBtn = `<button class="gowrite" data-h="${esc(r.hakbun)}" data-g="${esc(state.group)}" data-a="${esc(c.area)}">쓰러 가기 ▶</button>`;
       const who = i === 0
@@ -611,7 +646,7 @@ async function renderDash() {
   }).join('');
   $('#dashTable').innerHTML = `<table class="dash flat">${head}${rows}</table>`;
   $('#dashTable').querySelectorAll('.cell-copy').forEach((b) => {
-    b.onclick = () => copyText(dashBodies[b.dataset.key], b.dataset.area);
+    b.onclick = () => copyText(dashBodies[b.dataset.key], b.dataset.area, '', Number(b.dataset.lim) || null);
   });
   $('#dashTable').querySelectorAll('.gowrite').forEach((b) => {
     b.onclick = () => openWrite(b.dataset.h, b.dataset.g, b.dataset.a);
@@ -638,10 +673,11 @@ function renderSettings() {
     const list = state.config.areas[cat] || [];
     const byKey = {};
     for (const a of list) byKey[a.area] = a.limit;
+    const title = CAT_LABEL[cat] || cat;
     if (cat === '기타') {
       const custom = list.map((a) => customRow(cat, a.area, a.limit)).join('');
       return `<div class="cfg-card" data-cat="${esc(cat)}">
-        <h3>${esc(cat)}</h3><div class="cfg-custom-list">${custom}</div>
+        <h3>${esc(title)}</h3><div class="cfg-custom-list">${custom}</div>
         <button class="cfg-add btn-ghost" data-cat="${esc(cat)}">+ 직접 영역</button>
       </div>`;
     }
@@ -653,7 +689,7 @@ function renderSettings() {
         <span class="cfg-byte-wrap" ${on ? '' : 'hidden'}>${byteSelect(key, lim)}</span>
       </div>`;
     }).join('');
-    return `<div class="cfg-card" data-cat="${esc(cat)}"><h3>${esc(cat)}</h3>${rows}</div>`;
+    return `<div class="cfg-card" data-cat="${esc(cat)}"><h3>${esc(title)}</h3>${rows}</div>`;
   }).join('');
 
   $('#cfgCards').querySelectorAll('.cfg-on').forEach((cb) => {
@@ -671,10 +707,6 @@ function renderSettings() {
   });
   $('#cfgCards').querySelectorAll('.cfg-del').forEach((b) => { b.onclick = () => b.closest('.cfg-row').remove(); });
 
-  const upSel = $('#upCategory');
-  if (!upSel.options.length) upSel.innerHTML = cats.map((c) => `<option>${esc(c)}</option>`).join('');
-  upSel.onchange = updateUploadHint;
-  updateUploadHint();
   renderManage();
 }
 
@@ -695,6 +727,7 @@ function renderManage() {
           <button class="mg-caret" data-g="${esc(g.group_tag)}">${exp ? '▾' : '▸'}</button>
           <span class="mg-name">${esc(g.group_tag)}</span>
           <span class="mg-n">${g.n}명</span>
+          ${groupByteControl(g)}
           <span class="spacer"></span>
           <button class="mg-rename btn-ghost" data-g="${esc(g.group_tag)}">이름변경</button>
           <button class="mg-del btn-ghost" data-g="${esc(g.group_tag)}">삭제</button>
@@ -704,10 +737,29 @@ function renderManage() {
     }
   }
   $('#managePanel').innerHTML = html;
+  $('#managePanel').querySelectorAll('.mg-byte').forEach((sel) => { sel.onchange = () => setGroupByteUI(sel.dataset.g, sel.value); });
   $('#managePanel').querySelectorAll('.mg-caret').forEach((b) => { b.onclick = () => toggleMg(b.dataset.g); });
   $('#managePanel').querySelectorAll('.mg-rename').forEach((b) => { b.onclick = () => renameGroupUI(b.dataset.g); });
   $('#managePanel').querySelectorAll('.mg-del').forEach((b) => { b.onclick = () => deleteGroupUI(b.dataset.g); });
   $('#managePanel').querySelectorAll('.mg-remove').forEach((b) => { b.onclick = () => removeMemberUI(b.dataset.h, b.dataset.g); });
+}
+
+function groupByteControl(g) {
+  if (!PER_SUBJECT.has(g.category)) return '';
+  const cur = Number(g.byte_limit) || '';
+  const presets = BYTE_PRESETS.map((p) => `<option value="${p}" ${cur === p ? 'selected' : ''}>${p}B</option>`).join('');
+  return `<select class="mg-byte" data-g="${esc(g.group_tag)}" title="이 그룹만 다른 바이트 한도 (예: 1학년 세특 750)">
+      <option value="" ${!cur ? 'selected' : ''}>설정값</option>${presets}
+    </select>`;
+}
+
+async function setGroupByteUI(tag, val) {
+  const r = await fetch(`/api/groups/${encodeURIComponent(tag)}/byte`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ byte_limit: val === '' ? null : Number(val) }) });
+  const d = await r.json();
+  if (!r.ok) { showToast(d.error || '저장 실패'); return; }
+  await refreshGroups();
+  if (state.view === 'student' && state.group === tag) renderGauge();
+  showToast(val === '' ? '✓ 설정값 사용' : `✓ ${val}B 한도 적용`);
 }
 
 function renderMgStudents(tag) {
@@ -748,17 +800,6 @@ async function removeMemberUI(hakbun, tag) {
   if (!confirm(`${hakbun} 학생을 '${tag}'에서 뺄까요?\n작성한 기록은 보존됩니다. (다른 그룹에도 없고 작성 내용이 전혀 없을 때만 학생이 정리됩니다)`)) return;
   await j(`/api/students/${encodeURIComponent(hakbun)}/membership/${encodeURIComponent(tag)}`, { method: 'DELETE' });
   await loadGroup(tag); await refreshGroups(); renderManage(); await loadList();
-}
-
-function updateUploadHint() {
-  const cat = $('#upCategory').value;
-  const hints = {
-    담임: '담임: 파일은 학번·이름. 그룹명을 비우면 ‘우리반’으로 등록됩니다.',
-    세특: '세특: 파일에 과목명·분반 열이 있으면 그 값으로, 없으면 위 그룹명으로 등록.',
-    동아리: '동아리: 파일에 동아리명 열이 있으면 그 값으로, 없으면 위 그룹명으로 등록.',
-    기타: '기타: 파일에 구분 열이 있으면 그 값으로, 없으면 위 그룹명으로 등록.',
-  };
-  $('#upHint').textContent = hints[cat] || '';
 }
 
 function customRow(cat, area, limit) {
@@ -836,25 +877,36 @@ function aoaFromSheet(ws) {
   return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
 }
 
-function parseFile(file, sheetName) {
+const CAT_LIST = ['담임', '세특', '동아리', '기타'];
+function inferCat(rows) {
+  const keys = new Set();
+  rows.slice(0, 8).forEach((r) => Object.keys(r).forEach((k) => keys.add(k)));
+  if (keys.has('과목명')) return '세특';
+  if (keys.has('동아리명')) return '동아리';
+  if (keys.has('구분')) return '기타';
+  return '담임';
+}
+
+// returns [{category, rows}] — one per category sheet (or column-inferred for ad-hoc files)
+function parseFileSheets(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('파일 읽기 실패'));
     reader.onload = (e) => {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array' });
-        const pick = sheetName && wb.SheetNames.includes(sheetName) ? sheetName : wb.SheetNames[0];
-        resolve(rowsFromAoa(aoaFromSheet(wb.Sheets[pick])));
+        const out = [];
+        for (const name of wb.SheetNames) {
+          const rows = rowsFromAoa(aoaFromSheet(wb.Sheets[name]));
+          if (!rows.length) continue;
+          const cat = CAT_LIST.includes(name) ? name : inferCat(rows);
+          out.push({ category: cat, rows });
+        }
+        resolve(out);
       } catch (err) { reject(err); }
     };
     reader.readAsArrayBuffer(file);
   });
-}
-
-function parsePasted(text) {
-  const lines = String(text || '').replace(/\r/g, '').split('\n').filter((l) => l.trim());
-  const aoa = lines.map((l) => (l.indexOf('\t') >= 0 ? l.split('\t') : (l.indexOf(',') >= 0 ? l.split(',') : l.split(/\s{1,}/))).map((c) => c.trim()));
-  return rowsFromAoa(aoa);
 }
 
 const TMPL_COLS = {
@@ -890,69 +942,127 @@ function downloadTemplate() {
   XLSX.writeFile(wb, '생기부-학생명단-템플릿.xlsx');
 }
 
-async function previewUpload(file) {
-  if (!file) return;
-  const category = $('#upCategory').value;
-  $('#upMsg').textContent = '읽는 중…';
-  let rows;
-  try { rows = await parseFile(file, category); } catch (e) { $('#upMsg').textContent = '파싱 실패: ' + e.message; return; }
-  previewRows(rows);
-}
-
-function previewPaste() {
-  const rows = parsePasted($('#pasteBox').value);
-  if (!rows.length) { $('#upMsg').textContent = '붙여넣은 내용이 없습니다'; return; }
-  previewRows(rows);
-}
-
-function previewRows(rows) {
-  const category = $('#upCategory').value;
-  const fallback = ($('#upGroup').value || '').trim() || (category === '담임' ? '우리반' : '');
+function buildCombined(sheets) {
   const groups = {};
   let noHakbun = 0; let noGroup = 0;
-  for (const r of rows) {
-    const hakbun = String(r['학번'] != null ? r['학번'] : (r.hakbun || '')).trim();
-    if (!hakbun) { noHakbun += 1; continue; }
-    const grp = rowGroup(category, r, fallback);
-    if (!grp) { noGroup += 1; continue; }
-    (groups[grp] = groups[grp] || []).push({ hakbun, name: String(r['이름'] || r.name || '').trim() });
+  for (const { category, rows } of sheets) {
+    const fallback = category === '담임' ? '우리반' : '';
+    for (const r of rows) {
+      const hakbun = String(r['학번'] != null ? r['학번'] : (r.hakbun || '')).trim();
+      if (!hakbun) { noHakbun += 1; continue; }
+      const grp = rowGroup(category, r, fallback);
+      if (!grp) { noGroup += 1; continue; }
+      const key = `${category}|${grp}`;
+      if (!groups[key]) groups[key] = { category, group: grp, students: [] };
+      groups[key].students.push({ hakbun, name: String(r['이름'] || r.name || '').trim() });
+    }
   }
-  const names = Object.keys(groups);
-  if (!names.length) {
-    const why = noGroup ? '그룹을 정할 수 없습니다 — 과목명/동아리명/구분 열이 없으면 위 ‘그룹명’을 입력하세요' : '학번이 있는 행이 없습니다';
-    $('#upMsg').textContent = '등록할 학생 0명 — ' + why;
+  return { groups, noHakbun, noGroup };
+}
+
+function resetUpPreview(msg) {
+  state.pendingUpload = null;
+  $('#upGroupTabs').innerHTML = '';
+  $('#upRegisterBtn').hidden = true;
+  $('#upAddStuBtn').hidden = true;
+  $('#upPreviewList').innerHTML = msg
+    ? `<div class="empty">등록할 학생 0명 — ${esc(msg)}</div>`
+    : '<div class="empty">왼쪽에 파일을 올리면 그룹·명단이 미리보기됩니다</div>';
+  $('#upPrevSum').textContent = '';
+  $('#upMsg').textContent = '';
+}
+
+async function previewUpload(file) {
+  if (!file) return;
+  $('#upMsg').textContent = '읽는 중…';
+  let sheets;
+  try { sheets = await parseFileSheets(file); } catch (e) { $('#upMsg').textContent = '파싱 실패: ' + e.message; return; }
+  showCombinedPreview(buildCombined(sheets));
+}
+
+function showCombinedPreview({ groups, noHakbun, noGroup }) {
+  const keys = Object.keys(groups);
+  if (!keys.length) {
+    resetUpPreview(noGroup ? '그룹 열(과목명/동아리명/구분) 또는 담임 시트를 확인하세요' : '학번 열을 확인하세요');
     return;
   }
-  state.pendingUpload = { category, groups };
-  const total = names.reduce((s, n) => s + groups[n].length, 0);
-  $('#upModalBody').innerHTML = names.map((g) =>
-    `<div class="up-grp"><div class="up-grp-head">(${esc(category)}) <b>${esc(g)}</b> <span class="muted">${groups[g].length}명</span></div>`
-    + `<div class="up-students muted">${groups[g].slice(0, 40).map((s) => esc(s.hakbun + ' ' + s.name)).join(', ')}${groups[g].length > 40 ? ' …' : ''}</div></div>`).join('');
-  const warn = (noHakbun || noGroup) ? `<div class="muted" style="margin-top:8px">제외된 행: 학번없음 ${noHakbun} · 그룹없음 ${noGroup}</div>` : '';
-  $('#upModalBody').innerHTML += warn;
-  $('#upModalSum').textContent = `${names.length}개 그룹 · ${total}명 추가`;
+  state.pendingUpload = groups;
+  state.upActive = keys[0];
+  state.upExcluded = (noHakbun || 0) + (noGroup || 0);
+  $('#upRegisterBtn').hidden = false;
+  $('#upAddStuBtn').hidden = false;
   $('#upMsg').textContent = '';
-  $('#upModal').hidden = false;
+  renderUpTabs();
+  renderUpList();
+}
+
+function renderUpTabs() {
+  const groups = state.pendingUpload || {};
+  const keys = Object.keys(groups);
+  const total = keys.reduce((s, k) => s + groups[k].students.length, 0);
+  const ex = state.upExcluded ? ` · 제외 ${state.upExcluded}` : '';
+  $('#upPrevSum').textContent = keys.length ? `${keys.length}개 그룹 · ${total}명${ex}` : '';
+  $('#upGroupTabs').innerHTML = keys.map((k) =>
+    `<button class="up-tab ${k === state.upActive ? 'sel' : ''}" data-k="${esc(k)}">${esc(groups[k].group)} <span class="up-tab-n">${groups[k].students.length}</span></button>`).join('');
+  $('#upGroupTabs').querySelectorAll('.up-tab').forEach((b) => { b.onclick = () => { state.upActive = b.dataset.k; renderUpTabs(); renderUpList(); }; });
+}
+
+function renderUpList() {
+  const groups = state.pendingUpload || {};
+  const g = groups[state.upActive];
+  if (!g) { $('#upPreviewList').innerHTML = ''; return; }
+  const rows = g.students.map((s, i) =>
+    `<tr>`
+    + `<td><input class="up-in" data-i="${i}" data-f="hakbun" value="${esc(s.hakbun)}" placeholder="학번" /></td>`
+    + `<td><input class="up-in" data-i="${i}" data-f="name" value="${esc(s.name)}" placeholder="이름" /></td>`
+    + `<td><button class="up-rm" data-i="${i}" title="행 삭제">✕</button></td></tr>`).join('');
+  $('#upPreviewList').innerHTML = `<div class="up-list-head"><span class="up-cat">(${esc(g.category)})</span> <b>${esc(g.group)}</b> · ${g.students.length}명</div>`
+    + '<table class="up-tbl edit"><thead><tr><th>학번</th><th>이름</th><th></th></tr></thead><tbody>'
+    + rows + '</tbody></table>';
+  $('#upPreviewList').querySelectorAll('.up-in').forEach((inp) => {
+    inp.oninput = () => { g.students[Number(inp.dataset.i)][inp.dataset.f] = inp.value.trim(); };
+  });
+  $('#upPreviewList').querySelectorAll('.up-rm').forEach((b) => {
+    b.onclick = () => { g.students.splice(Number(b.dataset.i), 1); renderUpTabs(); renderUpList(); };
+  });
+}
+
+function addUpStudent() {
+  const groups = state.pendingUpload;
+  if (!groups) return;
+  const g = groups[state.upActive];
+  if (!g) return;
+  g.students.push({ hakbun: '', name: '' });
+  renderUpTabs();
+  renderUpList();
+  const ins = $('#upPreviewList').querySelectorAll('.up-in[data-f="hakbun"]');
+  if (ins.length) ins[ins.length - 1].focus();
 }
 
 async function confirmUpload() {
-  const pu = state.pendingUpload;
-  if (!pu) return;
-  $('#upConfirm').disabled = true;
+  const groups = state.pendingUpload;
+  if (!groups) return;
+  $('#upRegisterBtn').disabled = true;
   let total = 0;
-  for (const g of Object.keys(pu.groups)) {
-    const res = await j('/api/students/bulk', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ group_tag: g, category: pu.category, students: pu.groups[g] }) });
+  for (const k of Object.keys(groups)) {
+    const g = groups[k];
+    const students = g.students.filter((s) => String(s.hakbun || '').trim());
+    if (!students.length) continue;
+    const res = await j('/api/students/bulk', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ group_tag: g.group, category: g.category, students }) });
     total += res.added;
   }
-  $('#upConfirm').disabled = false;
-  $('#upModal').hidden = true;
+  $('#upRegisterBtn').disabled = false;
+  $('#upRegisterBtn').hidden = true;
+  $('#upAddStuBtn').hidden = true;
   state.pendingUpload = null;
   $('#upFile').value = '';
-  if ($('#pasteBox')) $('#pasteBox').value = '';
-  $('#upMsg').textContent = `✓ ${total}명 등록됨`;
+  $('#upGroupTabs').innerHTML = '';
+  $('#upPreviewList').innerHTML = `<div class="empty">✓ ${total}명 등록 완료</div>`;
+  $('#upPrevSum').textContent = '';
+  showToast(`✓ ${total}명 등록됨`);
   await refreshGroups();
   await loadList();
-  if (state.view === 'settings') renderSettings();
+  if (state.view === 'settings') renderManage();
 }
 
 boot();

@@ -95,11 +95,17 @@ function seedConfig(db) {
   }
 }
 
+function migrateGroups(db) {
+  const cols = new Set(db.prepare('PRAGMA table_info(groups)').all().map((c) => c.name));
+  if (!cols.has('byte_limit')) db.exec('ALTER TABLE groups ADD COLUMN byte_limit INTEGER');
+}
+
 function open(file) {
   const db = new Database(file);
   db.pragma('journal_mode = WAL');
   db.exec(SCHEMA);
   migrateRecords(db);
+  migrateGroups(db);
   seedConfig(db);
   backfillGroups(db);
   return db;
@@ -143,9 +149,21 @@ function upsertGroup(db, group, category) {
 }
 
 function listGroupsDetailed(db) {
-  return db.prepare(`SELECT g.group_tag, g.category,
+  return db.prepare(`SELECT g.group_tag, g.category, g.byte_limit,
       (SELECT COUNT(*) FROM memberships m WHERE m.group_tag=g.group_tag) n
     FROM groups g ORDER BY g.category, g.group_tag`).all();
+}
+
+function setGroupByte(db, tag, limit) {
+  const v = (limit == null || limit === '') ? null : (Number(limit) || null);
+  db.prepare('UPDATE groups SET byte_limit=? WHERE group_tag=?').run(v, tag);
+  return v;
+}
+
+function limitForGroup(db, group, area) {
+  const row = db.prepare('SELECT category, byte_limit FROM groups WHERE group_tag=?').get(group);
+  if (row && row.byte_limit && PER_SUBJECT_CATEGORIES.has(row.category)) return row.byte_limit;
+  return limitFor(db, area);
 }
 
 function isEmptyRec(r) {
@@ -344,11 +362,11 @@ function areasForGroup(db, group) {
   return list.map((a) => ({ area: a.area, subject: perSubject ? String(group || '') : '' }));
 }
 
-function statusBytes(db, rec, area) {
-  const limit = limitFor(db, area);
+function statusBytes(db, group, rec, area) {
+  const limit = limitForGroup(db, group, area);
   const bytes = rec ? (rec.bytes || 0) : 0;
   const pct = limit ? Math.round((bytes / limit) * 1000) / 10 : 0;
-  return { bytes, pct };
+  return { bytes, pct, limit };
 }
 
 function dashboardData(db, group) {
@@ -360,9 +378,9 @@ function dashboardData(db, group) {
     const cells = areas.map(({ area, subject }) => {
       const rec = recs.find((r) => r.area === area && r.subject === subject);
       const status = rec ? (rec.status || '미작성') : '미작성';
-      const { bytes, pct } = statusBytes(db, rec, area);
+      const { bytes, pct, limit } = statusBytes(db, group, rec, area);
       if (summary[status] !== undefined) summary[status] += 1;
-      return { area, subject, status, bytes, pct, body: rec ? (rec.revised || rec.body || '') : '' };
+      return { area, subject, status, bytes, pct, limit, body: rec ? (rec.revised || rec.body || '') : '' };
     });
     return { hakbun: s.hakbun, name: s.name, cells };
   });
@@ -529,7 +547,7 @@ function bulkAddStudents(db, group, category, rows) {
 module.exports = {
   open, upsertStudent, listStudents, listGroups, getStudent, upsertRecord, saveLegacy, replaceBooks, deleteStudent,
   dashboardData, overlapReport, recentEdits, editsFor, qualityStats, promoteExemplar, listExemplars, areasForGroup,
-  getAreasConfig, setAreasConfig, getCategory, upsertGroup, listGroupsDetailed, limitFor, bulkAddStudents,
+  getAreasConfig, setAreasConfig, getCategory, upsertGroup, listGroupsDetailed, limitFor, limitForGroup, setGroupByte, bulkAddStudents,
   deleteGroup, removeMembership, renameGroup,
   CATEGORIES, DEFAULT_AREAS_CONFIG,
 };
