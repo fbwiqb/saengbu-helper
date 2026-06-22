@@ -313,8 +313,6 @@ function getStudent(db, hakbun) {
   const student = db.prepare('SELECT * FROM students WHERE hakbun=?').get(hakbun);
   if (!student) return null;
   student.records = db.prepare('SELECT * FROM records WHERE hakbun=? ORDER BY area,subject').all(hakbun);
-  student.legacy = db.prepare('SELECT * FROM legacy WHERE hakbun=?').get(hakbun)
-    || { hakbun, dup_avoid: '', growth_link: '', gap_fill: '' };
   student.books = db.prepare('SELECT * FROM books WHERE hakbun=?').all(hakbun);
   student.groups = db.prepare('SELECT group_tag FROM memberships WHERE hakbun=? ORDER BY group_tag').all(hakbun).map((r) => r.group_tag);
   return student;
@@ -326,9 +324,9 @@ function upsertRecord(db, r) {
     q_exp: null, q_think: null, q_growth: null, q_authentic: null, accepted: 0, ...r,
   };
   params.subject = params.subject == null ? '' : params.subject;
-  if (!params.subject && (params.area === '동아리' || params.area === '세특')) {
+  if (!params.subject) {
     const groups = db.prepare('SELECT group_tag FROM memberships WHERE hakbun=?').all(params.hakbun).map((m) => m.group_tag);
-    const matches = groups.filter((g) => areasForGroup(db, g).some((a) => a.area === params.area));
+    const matches = groups.filter((g) => PER_SUBJECT_CATEGORIES.has(getCategory(db, g)) && areasForGroup(db, g).some((a) => a.area === params.area));
     if (matches.length === 1) params.subject = matches[0];
   }
   const prev = db.prepare('SELECT body, revised FROM records WHERE hakbun=? AND area=? AND subject=?')
@@ -347,14 +345,6 @@ function upsertRecord(db, r) {
       q_exp=excluded.q_exp, q_think=excluded.q_think, q_growth=excluded.q_growth,
       q_authentic=excluded.q_authentic, accepted=excluded.accepted, updated_at=datetime('now')`)
     .run(params);
-}
-
-function saveLegacy(db, l) {
-  db.prepare(`INSERT INTO legacy (hakbun,dup_avoid,growth_link,gap_fill)
-    VALUES (@hakbun,@dup_avoid,@growth_link,@gap_fill)
-    ON CONFLICT(hakbun) DO UPDATE SET dup_avoid=excluded.dup_avoid,
-      growth_link=excluded.growth_link, gap_fill=excluded.gap_fill`)
-    .run({ dup_avoid: '', growth_link: '', gap_fill: '', ...l });
 }
 
 function replaceBooks(db, hakbun, area, subject, books) {
@@ -406,84 +396,6 @@ function dashboardData(db, group) {
   return { group, areas: areas.map((a) => a.area), rows, summary, totalCells, completion };
 }
 
-function ngrams(s, n) {
-  const out = new Set();
-  const str = String(s || '').replace(/\s+/g, '');
-  for (let i = 0; i + n <= str.length; i++) out.add(str.slice(i, i + n));
-  return out;
-}
-
-function jaccard(a, b) {
-  if (!a.size || !b.size) return 0;
-  let inter = 0;
-  for (const x of a) if (b.has(x)) inter += 1;
-  return inter / (a.size + b.size - inter);
-}
-
-function overlapReport(db, group) {
-  const students = listStudents(db, group);
-  const byHakbun = new Map(students.map((s) => [s.hakbun, s]));
-  const recs = [];
-  for (const s of students) {
-    for (const r of db.prepare('SELECT * FROM records WHERE hakbun=?').all(s.hakbun)) {
-      const text = r.revised || r.body || '';
-      if (text.trim()) recs.push({ hakbun: s.hakbun, name: s.name, area: r.area, subject: r.subject || '', text });
-    }
-  }
-  const termMap = new Map();
-  for (const r of recs) {
-    const terms = new Set();
-    const quoteRe = /['‘]([^'’\n]{2,40}?)['’]/g;
-    let m;
-    while ((m = quoteRe.exec(r.text)) !== null) terms.add(m[1].trim());
-    const nounRe = /[가-힣]{3,12}(?:활동|대회|행사|프로젝트|캠페인|동아리|발표회|축제|체험|봉사)/g;
-    while ((m = nounRe.exec(r.text)) !== null) terms.add(m[0].trim());
-    for (const t of terms) {
-      if (!t) continue;
-      const key = `${r.area} ${r.subject} ${t}`;
-      if (!termMap.has(key)) termMap.set(key, { term: t, area: r.area, subject: r.subject, students: new Map() });
-      termMap.get(key).students.set(r.hakbun, byHakbun.get(r.hakbun) ? byHakbun.get(r.hakbun).name : '');
-    }
-  }
-  const events = [];
-  for (const v of termMap.values()) {
-    if (v.students.size >= 2) {
-      events.push({ term: v.term, area: v.area, subject: v.subject, students: [...v.students.entries()].map(([hakbun, name]) => ({ hakbun, name })) });
-    }
-  }
-  events.sort((a, b) => b.students.length - a.students.length);
-  const grams = recs.map((r) => ({ ...r, g: ngrams(r.text, 4) }));
-  const similarPairs = [];
-  for (let i = 0; i < grams.length; i++) {
-    for (let k = i + 1; k < grams.length; k++) {
-      if (grams[i].area !== grams[k].area) continue;
-      if ((grams[i].subject || '') !== (grams[k].subject || '')) continue;
-      const score = jaccard(grams[i].g, grams[k].g);
-      if (score >= 0.3) {
-        similarPairs.push({
-          a: { hakbun: grams[i].hakbun, name: grams[i].name },
-          b: { hakbun: grams[k].hakbun, name: grams[k].name },
-          area: grams[i].area,
-          subject: grams[i].subject || '',
-          score: Math.round(score * 1000) / 1000,
-        });
-      }
-    }
-  }
-  similarPairs.sort((a, b) => b.score - a.score);
-  return { events, similarPairs };
-}
-
-function recentEdits(db, group, limit = 20) {
-  const lim = Number(limit) || 20;
-  if (!group) {
-    return db.prepare('SELECT * FROM edits_log ORDER BY id DESC LIMIT ?').all(lim);
-  }
-  return db.prepare(`SELECT e.* FROM edits_log e
-    JOIN memberships m ON e.hakbun=m.hakbun
-    WHERE m.group_tag=? ORDER BY e.id DESC LIMIT ?`).all(group, lim);
-}
-
 function editsFor(db, hakbun, area, subject) {
   return db.prepare('SELECT * FROM edits_log WHERE hakbun=? AND area=? AND subject=? ORDER BY id ASC')
     .all(hakbun, area, subject || '');
@@ -520,23 +432,6 @@ function qualityStats(db, group) {
   return out;
 }
 
-function promoteExemplar(db, hakbun, area, subject) {
-  const rec = db.prepare('SELECT * FROM records WHERE hakbun=? AND area=? AND subject=?')
-    .get(hakbun, area, subject || '');
-  if (!rec) return null;
-  const text = rec.revised || rec.body || '';
-  db.prepare(`INSERT INTO exemplars_added (hakbun,area,subject,text,added_at)
-    VALUES (?,?,?,?,datetime('now'))`).run(hakbun, area, subject || '', text);
-  return { hakbun, area, subject: subject || '', text };
-}
-
-function listExemplars(db, group) {
-  if (!group) return db.prepare('SELECT * FROM exemplars_added ORDER BY rowid DESC').all();
-  return db.prepare(`SELECT x.* FROM exemplars_added x
-    JOIN memberships m ON x.hakbun=m.hakbun
-    WHERE m.group_tag=? ORDER BY x.rowid DESC`).all(group);
-}
-
 function bulkAddStudents(db, group, category, rows) {
   upsertGroup(db, group, category);
   const tx = db.transaction((list) => {
@@ -562,8 +457,8 @@ function bulkAddStudents(db, group, category, rows) {
 }
 
 module.exports = {
-  open, upsertStudent, listStudents, listGroups, getStudent, upsertRecord, saveLegacy, replaceBooks, deleteStudent,
-  dashboardData, overlapReport, recentEdits, editsFor, qualityStats, promoteExemplar, listExemplars, areasForGroup,
+  open, upsertStudent, listStudents, listGroups, getStudent, upsertRecord, replaceBooks, deleteStudent,
+  dashboardData, editsFor, areasForGroup,
   getAreasConfig, setAreasConfig, getSpellIgnore, saveSpellIgnore, addSpellIgnore, getCategory, upsertGroup, listGroupsDetailed, limitFor, limitForGroup, setGroupByte, bulkAddStudents,
   deleteGroup, removeMembership, renameGroup,
   CATEGORIES, DEFAULT_AREAS_CONFIG,

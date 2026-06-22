@@ -121,6 +121,9 @@ async function boot() {
   $('#histBtn').onclick = openHistory;
   $('#histClose').onclick = closeHistory;
   $('#histModal').onclick = (e) => { if (e.target === $('#histModal')) closeHistory(); };
+  $('#helpBtn').onclick = openHelp;
+  $('#helpClose').onclick = closeHelp;
+  $('#helpModal').onclick = (e) => { if (e.target === $('#helpModal')) closeHelp(); };
   $('#nextBtn').onclick = gotoNextUnwritten;
   $('#sentToggle').onclick = toggleSentMode;
   $('#dejoinBtn').onclick = dejoinBody;
@@ -147,6 +150,7 @@ async function boot() {
   document.addEventListener('keydown', onKey);
   window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
   initUpdater();
+  try { if (!localStorage.getItem('saengbu_onboarded')) { openHelp(); localStorage.setItem('saengbu_onboarded', '1'); } } catch (e) { /* ignore */ }
   if (!state.groupsList.length) { setView('settings'); return; }
   if (state.group) state.expanded.add(state.group);
   await loadList();
@@ -301,17 +305,6 @@ async function onSearch() {
 }
 
 function updateEmptyState() {
-  const hasGroups = state.groupsList.length > 0;
-  if (!hasGroups) {
-    $('#emptyTitle').textContent = '시작하려면 설정에서 명단을 올리세요';
-    $('#emptyMsg').innerHTML = '아직 등록된 그룹이 없습니다. <b>설정 탭</b>에서 분류별 영역을 정하고 학생 명단(xlsx/csv)을 업로드하세요.';
-  } else {
-    $('#emptyTitle').textContent = '학생을 선택하세요';
-    $('#emptyMsg').innerHTML = '왼쪽에서 <b>그룹을 펼쳐</b> 학생을 고르세요. 검색·정렬로 빠르게 찾을 수 있습니다.';
-  }
-}
-
-function updateEmptyState() {
   const hasGroups = Object.keys(state.groupCat).length > 0;
   const hasStudents = (state.listCache || []).length > 0;
   if (!hasGroups) {
@@ -352,7 +345,7 @@ async function openStudent(hakbun, group) {
   if (group) { state.group = group; state.expanded.add(group); state.listCache = state.studsByGroup[group] || state.listCache; }
   state.hakbun = hakbun;
   state.student = await j('/api/students/' + hakbun);
-  if (state.view !== 'student') { setView('student'); } else { setView('student'); }
+  setView('student');
   const g = state.group || '';
   const s = state.student;
   $('#headInfo').innerHTML = `${esc(s.hakbun)} ${esc(s.name)}<span class="sub">(${esc(catFor(g))}) ${esc(g)}${(s.groups || []).length > 1 ? ' · 소속 ' + esc((s.groups || []).join(', ')) : ''}</span>`;
@@ -731,6 +724,9 @@ async function restoreVersion(idx) {
 
 function closeHistory() { $('#histModal').hidden = true; }
 
+function openHelp() { $('#helpModal').hidden = false; }
+function closeHelp() { $('#helpModal').hidden = true; }
+
 function showUpd(msg, percent, ready) {
   $('#updBanner').hidden = false;
   $('#updMsg').textContent = msg;
@@ -799,18 +795,25 @@ async function openDataFolder() {
 }
 
 async function saveRecord(silent) {
-  if (!state.hakbun || !state.area) return;
+  if (!state.hakbun || !state.area) return false;
   const url = `/api/records/${state.hakbun}/${encodeURIComponent(state.area)}?subject=${encodeURIComponent(state.subject)}`;
-  state.student = await j(url, { method: 'PUT', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ body: $('#body').value, status: state.curStatus || '미작성' }) });
-  state.dirty = false;
-  await loadList();
-  if (!silent) showToast('✓ 저장됨');
+  try {
+    const r = await fetch(url, { method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body: $('#body').value, status: state.curStatus || '미작성' }) });
+    if (!r.ok) { showToast('저장 실패 — 잠시 후 다시 시도하세요 (입력은 유지됨)'); return false; }
+    state.student = await r.json();
+    state.dirty = false;
+    await loadList();
+    if (!silent) showToast('✓ 저장됨');
+    return true;
+  } catch (e) {
+    showToast('저장 실패 — 연결을 확인하세요 (입력은 유지됨)');
+    return false;
+  }
 }
 
 async function saveIfDirty() {
   if (state.dirty && state.hakbun && state.area) await saveRecord(true);
-  state.dirty = false;
 }
 
 function onKey(e) {
@@ -1108,7 +1111,7 @@ function aoaFromSheet(ws) {
 }
 
 const CAT_LIST = ['담임', '세특', '동아리', '기타'];
-function inferCat(rows) {
+function inferCatFromRows(rows) {
   const keys = new Set();
   rows.slice(0, 8).forEach((r) => Object.keys(r).forEach((k) => keys.add(k)));
   if (keys.has('과목명')) return '세특';
@@ -1129,7 +1132,7 @@ function parseFileSheets(file) {
         for (const name of wb.SheetNames) {
           const rows = rowsFromAoa(aoaFromSheet(wb.Sheets[name]));
           if (!rows.length) continue;
-          const cat = CAT_LIST.includes(name) ? name : inferCat(rows);
+          const cat = CAT_LIST.includes(name) ? name : inferCatFromRows(rows);
           out.push({ category: cat, rows });
         }
         resolve(out);

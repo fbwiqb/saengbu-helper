@@ -37,7 +37,9 @@ function dump(db) {
 function restore(db, data) {
   const tx = db.transaction(() => {
     for (const t of TABLES) {
-      const rows = (data.tables && data.tables[t]) || [];
+      const rows = data.tables[t];
+      if (rows === undefined) continue;
+      if (!Array.isArray(rows)) throw new Error(`백업의 ${t} 테이블 형식이 올바르지 않습니다`);
       const cols = new Set(db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name));
       db.prepare(`DELETE FROM ${t}`).run();
       for (const row of rows) {

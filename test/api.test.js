@@ -50,16 +50,6 @@ test('학번만 있는 부분 본문도 200', async () => {
   });
 });
 
-test('legacy는 없는 학생이면 404', async () => {
-  await withServer(async (base) => {
-    const res = await fetch(`${base}/api/legacy/333`, {
-      method: 'PUT', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    assert.strictEqual(res.status, 404);
-  });
-});
-
 test('레코드 저장은 바이트 자동계산', async () => {
   await withServer(async (base) => {
     await fetch(`${base}/api/students`, {

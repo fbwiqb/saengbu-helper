@@ -10,6 +10,13 @@ const FORBIDDEN = loadForbidden(path.join(__dirname, '../data/forbidden.json'));
 
 function createApp(db) {
   const app = express();
+  app.use('/api', (req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) {
+      return res.status(403).json({ error: '다른 출처에서의 요청은 허용되지 않습니다' });
+    }
+    next();
+  });
   app.use(express.json({ limit: '50mb' }));
   app.use(express.static(path.join(__dirname, '../public')));
 
@@ -165,24 +172,7 @@ function createApp(db) {
   });
 
   app.get('/api/dashboard', (req, res) => res.json(db_.dashboardData(db, req.query.group)));
-  app.get('/api/overlap', (req, res) => res.json(db_.overlapReport(db, req.query.group)));
-  app.get('/api/edits', (req, res) => res.json(db_.recentEdits(db, req.query.group, req.query.limit)));
   app.get('/api/history/:hakbun/:area', (req, res) => res.json(db_.editsFor(db, req.params.hakbun, req.params.area, req.query.subject || '')));
-  app.get('/api/quality', (req, res) => res.json(db_.qualityStats(db, req.query.group)));
-
-  app.post('/api/promote/:hakbun/:area', (req, res) => {
-    if (!db_.getStudent(db, req.params.hakbun)) return res.status(404).json({ error: 'not found' });
-    const subject = req.query.subject || '';
-    const ex = db_.promoteExemplar(db, req.params.hakbun, req.params.area, subject);
-    if (!ex) return res.status(404).json({ error: 'record not found' });
-    res.json(ex);
-  });
-
-  app.put('/api/legacy/:hakbun', (req, res) => {
-    if (!db_.getStudent(db, req.params.hakbun)) return res.status(404).json({ error: 'not found' });
-    db_.saveLegacy(db, { ...req.body, hakbun: req.params.hakbun });
-    res.json(db_.getStudent(db, req.params.hakbun));
-  });
 
   return app;
 }

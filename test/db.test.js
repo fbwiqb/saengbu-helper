@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { open, upsertStudent, listStudents, getStudent,
-        upsertRecord, saveLegacy, replaceBooks } = require('../src/db');
+        upsertRecord, replaceBooks } = require('../src/db');
 
 function freshDb() { return open(':memory:'); }
 
@@ -54,12 +54,10 @@ test('NULL subject도 PRIMARY KEY로 묶임', () => {
   assert.strictEqual(s.records[0].body, 'Y');
 });
 
-test('연계메모 + 독서 교체', () => {
+test('독서 교체', () => {
   const db = freshDb();
   upsertStudent(db, { hakbun: '30404', name: '홍길동', group_tag: '3-4담임' });
-  saveLegacy(db, { hakbun: '30404', dup_avoid: 'x', growth_link: 'y', gap_fill: 'z' });
   replaceBooks(db, '30404', '자율', '', [{ title: 'T', author: 'A' }]);
   const s = getStudent(db, '30404');
-  assert.strictEqual(s.legacy.growth_link, 'y');
   assert.strictEqual(s.books.length, 1);
 });

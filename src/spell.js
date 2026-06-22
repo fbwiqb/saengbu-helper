@@ -42,7 +42,6 @@ function viaNode(url, postData) {
     headers: { ...HEADERS, Origin: u.origin, Referer: u.origin + '/', 'Content-Length': Buffer.byteLength(postData) },
     timeout: 20000,
   };
-  if (u.protocol === 'https:') opts.rejectUnauthorized = false;
   return new Promise((resolve, reject) => {
     const req = mod.request(opts, (resp) => {
       if (resp.statusCode >= 400) { resp.resume(); reject(new Error('HTTP ' + resp.statusCode)); return; }
