@@ -132,6 +132,8 @@ async function boot() {
   $('#cfgSave').onclick = saveConfig;
   $('#tmplLink').onclick = downloadTemplate;
   $('#openFolderBtn').onclick = openDataFolder;
+  $('#bakExportBtn').onclick = exportBackup;
+  $('#bakImportBtn').onclick = importBackup;
   const dz = $('#dropzone');
   dz.onclick = () => $('#upFile').click();
   dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('drag'); };
@@ -744,6 +746,44 @@ function initUpdater() {
   window.updater.onAvailable((d) => showUpd(`새 버전 ${d.version || ''} 발견 — 다운로드 준비 중…`, 0, false));
   window.updater.onProgress((d) => showUpd(`업데이트 다운로드 중… ${Math.round(d.percent || 0)}%`, d.percent || 0, false));
   window.updater.onDownloaded((d) => showUpd(`새 버전 ${d.version || ''} 준비 완료 — 재시작하면 적용됩니다`, 100, true));
+}
+
+async function exportBackup() {
+  const pw = $('#bakExpPw').value;
+  if (!pw || pw.length < 4) { $('#bakMsg').textContent = '백업 비밀번호는 4자 이상이어야 합니다'; return; }
+  $('#bakMsg').textContent = '백업 만드는 중…';
+  try {
+    const r = await fetch('/api/backup/export', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+    const d = await r.json();
+    if (!r.ok) { $('#bakMsg').textContent = d.error || '내보내기 실패'; return; }
+    const blob = new Blob([JSON.stringify(d)], { type: 'application/octet-stream' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `생기부백업_${new Date().toISOString().slice(0, 10)}.sbbak`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    $('#bakExpPw').value = '';
+    $('#bakMsg').textContent = '✓ 암호화 백업 파일을 저장했습니다 (비밀번호 분실 시 복원 불가)';
+  } catch (e) { $('#bakMsg').textContent = '내보내기 실패'; }
+}
+
+async function importBackup() {
+  const f = $('#bakImpFile').files[0];
+  const pw = $('#bakImpPw').value;
+  if (!f) { $('#bakMsg').textContent = '백업 파일을 선택하세요'; return; }
+  if (!pw) { $('#bakMsg').textContent = '백업 비밀번호를 입력하세요'; return; }
+  if (!confirm('현재 데이터를 백업 내용으로 덮어씁니다. 되돌릴 수 없습니다. 계속할까요?')) return;
+  let env;
+  try { env = JSON.parse(await f.text()); } catch { $('#bakMsg').textContent = '백업 파일을 읽을 수 없습니다'; return; }
+  $('#bakMsg').textContent = '복원 중…';
+  try {
+    const r = await fetch('/api/backup/import', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: pw, envelope: env }) });
+    const d = await r.json();
+    if (!r.ok) { $('#bakMsg').textContent = d.error || '불러오기 실패'; return; }
+    $('#bakImpPw').value = '';
+    $('#bakMsg').textContent = '✓ 복원 완료 — 새로고침합니다';
+    setTimeout(() => location.reload(), 900);
+  } catch (e) { $('#bakMsg').textContent = '불러오기 실패'; }
 }
 
 async function openDataFolder() {

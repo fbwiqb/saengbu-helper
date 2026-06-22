@@ -155,6 +155,11 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); box-sha
 }
 .badge.미작성 { background: var(--surface-2); color: var(--ink-faint); }
 .prog-chip { cursor: pointer; }
+.bak-sec { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.bak-h { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.bak-sec .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.bak-sec input[type="password"] { min-width: 200px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.bak-sec input[type="file"] { font-size: 12px; }
 .status-chip { border: none; cursor: pointer; font-size: 12.5px; padding: 5px 14px; }
 .status-chip:hover { filter: brightness(0.96); box-shadow: 0 0 0 2px var(--accent-soft); }
 .badge.초안 { background: #e6eef6; color: var(--blue); }

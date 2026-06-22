@@ -3,14 +3,24 @@ const path = require('path');
 const { calcBytes, evaluate, TARGETS } = require('./bytes');
 const { loadForbidden, scan } = require('./forbidden');
 const { extractBooks } = require('./books');
+const backup = require('./backup');
 const db_ = require('./db');
 
 const FORBIDDEN = loadForbidden(path.join(__dirname, '../data/forbidden.json'));
 
 function createApp(db) {
   const app = express();
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '50mb' }));
   app.use(express.static(path.join(__dirname, '../public')));
+
+  app.post('/api/backup/export', (req, res) => {
+    try { res.json(backup.exportBackup(db, (req.body || {}).password)); }
+    catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+  });
+  app.post('/api/backup/import', (req, res) => {
+    try { res.json(backup.importBackup(db, (req.body || {}).password, (req.body || {}).envelope)); }
+    catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+  });
 
   app.post('/api/open-folder', (_req, res) => {
     try {

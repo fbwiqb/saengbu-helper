@@ -110,12 +110,28 @@
       <div id="managePanel" class="card"></div>
 
       <h2>데이터 / 백업</h2>
-      <p class="muted">생기부 기록은 아래 폴더의 <b>saengbu.db</b> 파일에 저장됩니다. 백업하려면 이 파일을 복사해 두세요.</p>
+      <p class="muted">생기부 기록은 아래 폴더의 <b>saengbu.db</b> 파일에 저장됩니다. 다른 PC에서 이어서 작업하려면 <b>백업 내보내기</b>로 암호화 파일을 만들어 옮긴 뒤 <b>백업 불러오기</b>로 복원하세요.</p>
       <div class="card">
         <div class="row" style="align-items:center">
           <button id="openFolderBtn" class="btn-primary" type="button">데이터 폴더 열기</button>
           <span id="folderMsg" class="muted"></span>
         </div>
+        <div class="bak-sec">
+          <div class="bak-h">백업 내보내기 <span class="muted">— 전체 데이터를 비밀번호로 암호화해 파일로 저장</span></div>
+          <div class="row">
+            <input id="bakExpPw" type="password" placeholder="백업 비밀번호 (4자 이상)" autocomplete="new-password" />
+            <button id="bakExportBtn" class="btn-ghost" type="button">내보내기</button>
+          </div>
+        </div>
+        <div class="bak-sec">
+          <div class="bak-h">백업 불러오기 <span class="muted">— ⚠️ 현재 데이터를 백업 내용으로 <b>덮어씁니다</b></span></div>
+          <div class="row">
+            <input id="bakImpFile" type="file" accept=".sbbak,.json,application/json" />
+            <input id="bakImpPw" type="password" placeholder="백업 비밀번호" autocomplete="off" />
+            <button id="bakImportBtn" class="btn-ghost" type="button">불러오기</button>
+          </div>
+        </div>
+        <span id="bakMsg" class="muted"></span>
       </div>
     </section>
 
