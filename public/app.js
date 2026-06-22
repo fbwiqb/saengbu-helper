@@ -162,9 +162,8 @@ function sortStuds(list) {
 function progBadge(s) {
   const p = s.prog;
   if (!p || !p.total) return `<span class="badge">${esc(s.status || '미작성')}</span>`;
-  const ip = Math.max(0, p.started - p.done);
   const cls = p.done >= p.total ? '완료' : (p.started ? '초안' : '');
-  return `<span class="badge ${cls}" title="저장 ${p.done} · 작성중 ${ip} · 전체 ${p.total}">${p.done}/${ip}/${p.total}</span>`;
+  return `<span class="badge ${cls}" title="저장 ${p.done} / 전체 ${p.total}">${p.done}/${p.total}</span>`;
 }
 
 function renderStuds(tag, q) {
