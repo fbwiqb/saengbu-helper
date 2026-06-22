@@ -369,13 +369,25 @@ mark.hl { background: #fff07a; color: inherit; border-radius: 3px; padding: 0 1p
 .freq-grp .ft { font-size: 11px; font-weight: 700; color: var(--ink-faint); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .03em; }
 
 /* ===== Spell check ===== */
-.spell-item { padding: 7px 0; border-bottom: 1px dashed var(--line-soft); }
+.spell-item { padding: 7px 4px; border-bottom: 1px dashed var(--line-soft); border-radius: 6px; cursor: pointer; }
 .spell-item:last-child { border-bottom: none; }
+.spell-item:hover { background: var(--surface-2); }
+.spell-item.sel { background: var(--red-bg); }
 .sp-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
 .sp-orig { color: var(--red); font-weight: 700; text-decoration: line-through; }
 .sp-arrow { color: var(--ink-faint); }
 .sp-sug { color: var(--green); font-weight: 700; }
+.sp-cand { font-size: 12px; padding: 1px 4px; border-radius: 6px; color: var(--green); font-weight: 700; }
 .sp-help { font-size: 11.5px; color: var(--ink-faint); margin-top: 3px; line-height: 1.45; }
+.sp-more { font-size: 11px; padding: 0 6px; margin-left: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink-soft); cursor: pointer; }
+.sp-more:hover { border-color: var(--accent); color: var(--accent-ink); }
+.sp-actions { display: flex; gap: 6px; margin-top: 6px; }
+.sp-actions button { font-size: 11.5px; padding: 2px 10px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; }
+.sp-apply { background: var(--green-bg, #e3f3e8); color: var(--green); border-color: var(--green) !important; font-weight: 700; }
+.sp-apply:hover { background: var(--green); color: #fff; }
+.sp-dismiss { background: var(--surface); color: var(--ink-soft); }
+.sp-dismiss:hover { border-color: var(--red); color: var(--red); }
+mark.hl.spell-err { background: var(--red-bg); color: var(--red); box-shadow: none; text-decoration: underline wavy var(--red); text-underline-offset: 2px; }
 
 /* ===== History modal ===== */
 .modal { position: fixed; inset: 0; background: rgba(40,34,28,.42); display: grid; place-items: center; z-index: 1000; padding: 24px; }

@@ -135,6 +135,23 @@ function setAreasConfig(db, config) {
   return clean;
 }
 
+function getSpellIgnore(db) {
+  const row = db.prepare('SELECT value FROM app_config WHERE key=?').get('spell_ignore');
+  if (!row) return [];
+  try { const a = JSON.parse(row.value); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+
+function saveSpellIgnore(db, arr) {
+  const clean = [...new Set((Array.isArray(arr) ? arr : []).map((w) => String(w || '').trim()).filter(Boolean))];
+  db.prepare(`INSERT INTO app_config (key, value) VALUES ('spell_ignore', @v)
+    ON CONFLICT(key) DO UPDATE SET value=@v`).run({ v: JSON.stringify(clean) });
+  return clean;
+}
+
+function addSpellIgnore(db, word) {
+  return saveSpellIgnore(db, [...getSpellIgnore(db), word]);
+}
+
 function getCategory(db, group) {
   const row = db.prepare('SELECT category FROM groups WHERE group_tag=?').get(group);
   return row ? row.category : inferCategory(group);
@@ -547,7 +564,7 @@ function bulkAddStudents(db, group, category, rows) {
 module.exports = {
   open, upsertStudent, listStudents, listGroups, getStudent, upsertRecord, saveLegacy, replaceBooks, deleteStudent,
   dashboardData, overlapReport, recentEdits, editsFor, qualityStats, promoteExemplar, listExemplars, areasForGroup,
-  getAreasConfig, setAreasConfig, getCategory, upsertGroup, listGroupsDetailed, limitFor, limitForGroup, setGroupByte, bulkAddStudents,
+  getAreasConfig, setAreasConfig, getSpellIgnore, saveSpellIgnore, addSpellIgnore, getCategory, upsertGroup, listGroupsDetailed, limitFor, limitForGroup, setGroupByte, bulkAddStudents,
   deleteGroup, removeMembership, renameGroup,
   CATEGORIES, DEFAULT_AREAS_CONFIG,
 };

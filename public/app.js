@@ -1,6 +1,6 @@
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortUnwritten: false, hlMode: false };
+let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortUnwritten: false, hlMode: false, spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null };
 let dashBodies = {};
 
 const AREA_LABEL = {
@@ -17,6 +17,7 @@ const CATEGORY_AREAS = {
 const BYTE_PRESETS = [1500, 900, 750];
 const PER_SUBJECT = new Set(['세특', '동아리', '기타']);
 const CONNECTIVES = ['이를 통해', '이러한', '또한', '뿐만 아니라', '나아가', '한편', '그리하여', '따라서', '그러므로', '이로써', '이에', '특히', '아울러', '더불어', '바탕으로', '계기로', '통하여', '결과적으로', '뿐만'];
+const CONNECTIVE_RE = CONNECTIVES.map((c) => ({ c, re: new RegExp(c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g') }));
 const FREQ_STOP = new Set(['이를', '통해', '통한', '통하여', '대한', '대해', '위한', '위해', '하는', '있는', '되는', '했던', '보는', '같은', '등의', '등을', '으로', '에서', '그리고', '또한', '이러한', '바탕으로', '토대로', '과정', '가운데', '더욱', '매우', '그러한', '이와', '함께', '점을', '모습', '모습을', '모습이', '대하여', '있음', '있었', '하였', '되었', '하고', '으며', '하며']);
 
 function inferCat(g) {
@@ -89,9 +90,30 @@ function copyArea() { return copyText($('#body').value, state.area, '', activeLi
 async function boot() {
   state.config = await j('/api/config');
   state.forbidden = await j('/api/forbidden');
+  try { state.spellIgnore = new Set(await j('/api/spell-ignore')); } catch (e) { state.spellIgnore = new Set(); }
   buildTargets();
   await refreshGroups();
-  $('#body').addEventListener('input', () => { state.dirty = true; renderAssist(); });
+  $('#body').addEventListener('input', () => {
+    state.dirty = true;
+    renderGauge();
+    clearTimeout(state.assistTimer);
+    state.assistTimer = setTimeout(renderAssist, 180);
+  });
+  $('#spellPanel').addEventListener('click', (ev) => {
+    const more = ev.target.closest('.sp-more');
+    if (more) { const i = Number(more.dataset.idx); if (state.spellErrors[i]) { state.spellErrors[i].helpOpen = !state.spellErrors[i].helpOpen; renderSpellPanel(); } return; }
+    const apply = ev.target.closest('.sp-apply');
+    if (apply) { applySpell(Number(apply.dataset.idx)); return; }
+    const dismiss = ev.target.closest('.sp-dismiss');
+    if (dismiss) { dismissSpell(Number(dismiss.dataset.idx)); return; }
+    if (ev.target.closest('.sp-cand')) return;
+    const row = ev.target.closest('.spell-item');
+    if (row) toggleSpellHighlight(Number(row.dataset.idx));
+  });
+  $('#spellPanel').addEventListener('change', (ev) => {
+    const sel = ev.target.closest('.sp-cand');
+    if (sel && state.spellErrors[Number(sel.dataset.idx)]) state.spellErrors[Number(sel.dataset.idx)].choice = sel.value;
+  });
   $('#saveBtn').onclick = () => saveRecord();
   $('#copyBtn').onclick = copyArea;
   $('#spellBtn').onclick = runSpell;
@@ -330,6 +352,7 @@ function selectArea(area) {
   const rec = (state.student.records || []).find((r) => r.area === area && r.subject === state.subject) || {};
   $('#body').value = rec.body || '';
   $('#status').value = rec.status || '미작성';
+  state.spellErrors = []; state.spellHlIdx = null; state.spellBaseText = ''; state.spellUndo = null;
   showEdit();
   renderAssist();
   $('#spellPanel').innerHTML = '<div class="empty">‘맞춤법’ 버튼을 눌러 점검</div>';
@@ -360,34 +383,7 @@ function renderGauge() {
 
 function renderAssist() {
   const text = $('#body').value;
-  const { bytes, limit, pct, cls } = renderGauge();
-  const items = [];
-
-  if (limit) {
-    if (cls === 'over') items.push({ k: 'err', ico: '⚠', html: `한도 초과 — ${bytes - limit}B 줄이세요` });
-    else if (cls === 'full') items.push({ k: 'ok', ico: '●', html: `한도 근접 (${pct.toFixed(0)}%)` });
-    else if (cls === 'low') items.push({ k: 'warn', ico: '○', html: `분량 부족 (${pct.toFixed(0)}%)` });
-    else items.push({ k: 'ok', ico: '●', html: `적정 분량 (${pct.toFixed(0)}%)` });
-  }
-
-  const hits = state.forbidden.filter((t) => t && text.includes(t));
-  if (hits.length) {
-    items.push({ k: 'err', ico: '⚠', html: '금지어 ' + hits.map((h) => `<span class="chip">${esc(h)}</span>`).join('') });
-  }
-
-  const trimmed = text.trim();
-  if (trimmed) {
-    const endOk = /(?:음|함|됨|임)\.?$/.test(trimmed) || /(?:다)\.?$/.test(trimmed);
-    if (!endOk) items.push({ k: 'warn', ico: '○', html: '종결어미 확인 — 명사형(~함/~음) 권장' });
-    if (/[!?]/.test(text)) items.push({ k: 'warn', ico: '○', html: '느낌표/물음표는 생기부에 부적절' });
-    if (/(저는|제가|나는|내가)/.test(text)) items.push({ k: 'warn', ico: '○', html: '1인칭 표현 발견 — 관찰자 시점 권장' });
-  } else {
-    items.push({ k: 'warn', ico: '○', html: '본문이 비어 있음' });
-  }
-
-  $('#warnings').innerHTML = items.map((i) =>
-    `<div class="warn-item ${i.k}"><span class="ico">${i.ico}</span><span>${i.html}</span></div>`).join('');
-
+  renderGauge();
   renderFreq(text);
   if (state.sentMode) renderSentences(text);
 }
@@ -426,6 +422,7 @@ function renderSentences(text) {
 
 function showEdit() {
   state.sentMode = false; state.hlMode = false; state.hlTerm = null;
+  if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); }
   $('#body').hidden = false; $('#sentView').hidden = true;
   $('#sentToggle').classList.remove('sel'); $('#sentToggle').textContent = '문장별 보기';
 }
@@ -449,22 +446,23 @@ function dejoinBody() {
   showToast('✓ 줄바꿈 제거됨');
 }
 
-function highlightTerm(term) {
+function highlightTerm(term, markClass) {
   if (!term) return;
-  if (state.sentMode) { state.hlTerm = term; renderSentences($('#body').value); return; }
+  const mc = markClass || 'hl';
+  if (state.sentMode && mc === 'hl') { state.hlTerm = term; renderSentences($('#body').value); return; }
   state.hlMode = true; state.sentMode = false; state.hlTerm = term;
   const text = $('#body').value;
-  const html = esc(text).split(esc(term)).join(`<mark class="hl">${esc(term)}</mark>`).replace(/\n/g, '<br>');
+  const html = esc(text).split(esc(term)).join(`<mark class="${mc}">${esc(term)}</mark>`);
   const count = text.split(term).length - 1;
-  $('#sentView').innerHTML = `<div class="hl-head">‘<b>${esc(term)}</b>’ ${count}회 강조 — 편집하려면 ‘편집으로’</div><div class="hlview">${html}</div>`;
+  $('#sentView').innerHTML = `<div class="hl-head">‘<b>${esc(term)}</b>’ ${count}곳 강조 — 편집하려면 ‘편집으로’</div><div class="hlview">${html}</div>`;
   $('#body').hidden = true; $('#sentView').hidden = false;
   $('#sentToggle').classList.add('sel'); $('#sentToggle').textContent = '편집으로';
 }
 
 function renderFreq(text) {
   const t = String(text || '');
-  const conn = CONNECTIVES
-    .map((c) => ({ c, n: (t.match(new RegExp(c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length }))
+  const conn = CONNECTIVE_RE
+    .map(({ c, re }) => ({ c, n: (t.match(re) || []).length }))
     .filter((x) => x.n > 0)
     .sort((a, b) => b.n - a.n);
   const words = {};
@@ -484,21 +482,137 @@ function renderFreq(text) {
   $('#freqPanel').querySelectorAll('.chip.clickable').forEach((c) => { c.onclick = () => highlightTerm(c.dataset.term); });
 }
 
+const SPELL_HELP_MAX = 80;
+
 async function runSpell() {
   const text = $('#body').value.trim();
   if (!text) { $('#spellPanel').innerHTML = '<div class="empty">본문이 비어 있음</div>'; return; }
+  if (state.spellHlIdx != null) showEdit();
+  state.spellErrors = []; state.spellHlIdx = null;
   $('#spellPanel').innerHTML = '<div class="empty">부산대 검사기로 검사 중…</div>';
   try {
     const r = await fetch('/api/spellcheck', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
     const d = await r.json();
     if (!r.ok) { $('#spellPanel').innerHTML = `<div class="warn-item err"><span class="ico">⚠</span><span>검사 실패 — ${esc(d.error || '연결 오류')}</span></div>`; return; }
-    if (!d.errors.length) { $('#spellPanel').innerHTML = '<div class="warn-item ok"><span class="ico">●</span><span>맞춤법 의심 없음</span></div>'; return; }
-    $('#spellPanel').innerHTML = `<div class="muted" style="margin-bottom:6px">${d.errors.length}건</div>`
-      + d.errors.map((e) => `<div class="spell-item"><div class="sp-top"><span class="sp-orig">${esc(e.orig)}</span><span class="sp-arrow">→</span><span class="sp-sug">${esc(e.suggest.join(', ') || '-')}</span></div>${e.help ? `<div class="sp-help">${esc(e.help)}</div>` : ''}</div>`).join('');
-    showToast(`맞춤법 의심 ${d.errors.length}건`);
+    const errs = (d.errors || []).filter((e) => !state.spellIgnore.has(e.orig));
+    state.spellErrors = errs.map((e) => ({ ...e, choice: (e.suggest || [])[0] || '', helpOpen: false }));
+    state.spellBaseText = $('#body').value;
+    renderSpellPanel();
+    const ignored = (d.errors || []).length - errs.length;
+    showToast(`맞춤법 의심 ${errs.length}건${ignored ? ` · 무시 ${ignored}` : ''}`);
   } catch (e) {
     $('#spellPanel').innerHTML = '<div class="warn-item err"><span class="ico">⚠</span><span>검사기 연결 실패 — 인터넷 확인</span></div>';
   }
+}
+
+function spellHelpHtml(e, idx) {
+  const help = e.help || '';
+  if (!help) return '';
+  if ([...help].length <= SPELL_HELP_MAX || e.helpOpen) {
+    const more = [...help].length > SPELL_HELP_MAX ? ` <button class="sp-more" data-idx="${idx}">접기</button>` : '';
+    return `<div class="sp-help">${esc(help)}${more}</div>`;
+  }
+  const cut = [...help].slice(0, SPELL_HELP_MAX).join('');
+  return `<div class="sp-help collapsed">${esc(cut)}… <button class="sp-more" data-idx="${idx}">더보기</button></div>`;
+}
+
+function renderSpellPanel() {
+  const live = state.spellErrors.filter(Boolean);
+  if (!live.length) {
+    $('#spellPanel').innerHTML = '<div class="warn-item ok"><span class="ico">●</span><span>맞춤법 의심 없음 (또는 모두 처리됨)</span></div>';
+    return;
+  }
+  const rows = state.spellErrors.map((e, idx) => {
+    if (!e) return '';
+    const cands = e.suggest || [];
+    const sug = cands.length > 1
+      ? `<select class="sp-cand" data-idx="${idx}">${cands.map((c) => `<option value="${esc(c)}" ${c === e.choice ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`
+      : `<span class="sp-sug">${esc(cands[0] || '-')}</span>`;
+    const apply = cands.length ? `<button class="sp-apply" data-idx="${idx}">반영</button>` : '';
+    return `<div class="spell-item${idx === state.spellHlIdx ? ' sel' : ''}" data-idx="${idx}">
+      <div class="sp-top"><span class="sp-orig">${esc(e.orig)}</span><span class="sp-arrow">→</span>${sug}</div>
+      ${spellHelpHtml(e, idx)}
+      <div class="sp-actions">${apply}<button class="sp-dismiss" data-idx="${idx}">미반영</button></div>
+    </div>`;
+  }).join('');
+  $('#spellPanel').innerHTML = `<div class="muted spell-count" style="margin-bottom:6px">${live.length}건 · 행 클릭 시 본문 강조</div>${rows}`;
+}
+
+function markSpellActive() {
+  document.querySelectorAll('#spellPanel .spell-item').forEach((el) => {
+    el.classList.toggle('sel', Number(el.dataset.idx) === state.spellHlIdx);
+  });
+}
+
+function toggleSpellHighlight(idx) {
+  const e = state.spellErrors[idx];
+  if (!e) return;
+  if (state.spellHlIdx === idx) { showEdit(); return; }
+  const text = $('#body').value;
+  if (!text.includes(e.orig)) { showToast('본문에서 찾을 수 없음 — 검사 후 본문이 바뀌었을 수 있어요'); return; }
+  state.spellHlIdx = idx;
+  highlightTerm(e.orig, 'hl spell-err');
+  markSpellActive();
+}
+
+function applySpell(idx) {
+  const e = state.spellErrors[idx];
+  if (!e) return;
+  if (state.spellHlIdx != null) showEdit();
+  const cand = e.choice || (e.suggest || [])[0] || '';
+  if (!cand) return;
+  const cur = $('#body').value;
+  if (state.spellBaseText && cur !== state.spellBaseText) {
+    showToast('본문이 검사 후 수정됨 — 다시 검사해 주세요');
+    return;
+  }
+  const pos = cur.indexOf(e.orig);
+  if (pos < 0) { showToast('본문에서 찾을 수 없음'); return; }
+  state.spellUndo = { idx, text: cur };
+  const next = cur.slice(0, pos) + cand + cur.slice(pos + e.orig.length);
+  $('#body').value = next;
+  state.spellBaseText = next;
+  state.dirty = true;
+  renderAssist();
+  removeSpellRow(idx);
+  showToastUndo(`✓ '${e.orig}' → '${cand}' 반영 (저장 시 기록)`);
+}
+
+function showToastUndo(msg) {
+  let t = document.getElementById('toast');
+  showToast(msg);
+  if (t) {
+    const b = document.createElement('button');
+    b.textContent = '되돌리기';
+    b.style.cssText = 'margin-left:10px;background:#374151;color:#fff;border:1px solid #6b7280;border-radius:6px;padding:1px 8px;cursor:pointer;font-size:12px';
+    b.onclick = () => {
+      if (!state.spellUndo) return;
+      $('#body').value = state.spellUndo.text;
+      state.spellBaseText = state.spellUndo.text;
+      state.dirty = true; renderAssist();
+      state.spellUndo = null;
+      showToast('되돌렸습니다');
+    };
+    t.appendChild(b);
+  }
+}
+
+async function dismissSpell(idx) {
+  const e = state.spellErrors[idx];
+  if (!e) return;
+  if (state.spellHlIdx === idx) showEdit();
+  state.spellIgnore.add(e.orig);
+  removeSpellRow(idx);
+  try {
+    const list = await j('/api/spell-ignore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ word: e.orig }) });
+    state.spellIgnore = new Set(list);
+  } catch (err) { /* local set already updated */ }
+  showToast(`'${e.orig}' 무시 목록에 추가됨 (이후 검사에서 제외)`);
+}
+
+function removeSpellRow(idx) {
+  state.spellErrors[idx] = null;
+  renderSpellPanel();
 }
 
 function diffWords(a, b) {

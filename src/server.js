@@ -32,6 +32,10 @@ function createApp(db) {
     res.json({ categories: db_.CATEGORIES, areas: saved });
   });
 
+  app.get('/api/spell-ignore', (_req, res) => res.json(db_.getSpellIgnore(db)));
+  app.post('/api/spell-ignore', (req, res) => res.json(db_.addSpellIgnore(db, (req.body || {}).word)));
+  app.put('/api/spell-ignore', (req, res) => res.json(db_.saveSpellIgnore(db, (req.body || {}).words || [])));
+
   app.get('/api/groups', (_req, res) => res.json(db_.listGroupsDetailed(db)));
   app.post('/api/groups', (req, res) => {
     const { group_tag, category } = req.body || {};
