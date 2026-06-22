@@ -40,6 +40,22 @@ function createApp(db) {
     res.json({ group_tag, category: cat });
   });
 
+  app.delete('/api/groups/:tag', (req, res) => {
+    res.json(db_.deleteGroup(db, req.params.tag));
+  });
+  app.put('/api/groups/:tag/rename', (req, res) => {
+    try {
+      const cat = db_.renameGroup(db, req.params.tag, (req.body || {}).newTag);
+      res.json({ ok: true, category: cat });
+    } catch (e) {
+      res.status(400).json({ error: String(e.message || e) });
+    }
+  });
+  app.delete('/api/students/:hakbun/membership/:tag', (req, res) => {
+    db_.removeMembership(db, req.params.hakbun, req.params.tag);
+    res.json({ ok: true });
+  });
+
   app.post('/api/students/bulk', (req, res) => {
     const { group_tag, category, students } = req.body || {};
     if (!group_tag) return res.status(400).json({ error: 'group_tag 필요' });

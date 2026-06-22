@@ -135,9 +135,10 @@ function getCategory(db, group) {
 }
 
 function upsertGroup(db, group, category) {
+  const existing = db.prepare('SELECT category FROM groups WHERE group_tag=?').get(group);
+  if (existing) return existing.category;
   const cat = CATEGORIES.includes(category) ? category : inferCategory(group);
-  db.prepare(`INSERT INTO groups (group_tag, category) VALUES (?, ?)
-    ON CONFLICT(group_tag) DO UPDATE SET category=excluded.category`).run(group, cat);
+  db.prepare('INSERT INTO groups (group_tag, category) VALUES (?, ?)').run(group, cat);
   return cat;
 }
 
@@ -145,6 +146,84 @@ function listGroupsDetailed(db) {
   return db.prepare(`SELECT g.group_tag, g.category,
       (SELECT COUNT(*) FROM memberships m WHERE m.group_tag=g.group_tag) n
     FROM groups g ORDER BY g.category, g.group_tag`).all();
+}
+
+function isEmptyRec(r) {
+  return !((r.body || '').trim() || (r.revised || '').trim() || (r.reason || '').trim());
+}
+
+function coveredAreas(db, hakbun, excludeTag) {
+  const groups = db.prepare('SELECT group_tag FROM memberships WHERE hakbun=?').all(hakbun)
+    .map((r) => r.group_tag).filter((g) => g !== excludeTag);
+  const valid = new Set();
+  for (const g of groups) for (const a of areasForGroup(db, g)) valid.add(`${a.area}|${a.subject || ''}`);
+  return { groups, valid };
+}
+
+// SAFE prune: only delete EMPTY uncovered placeholder records. Never delete content. Never auto-delete a student that still has any record.
+function pruneStudent(db, hakbun) {
+  const { groups, valid } = coveredAreas(db, hakbun, null);
+  for (const r of db.prepare('SELECT area,subject,body,revised,reason FROM records WHERE hakbun=?').all(hakbun)) {
+    const key = `${r.area}|${r.subject || ''}`;
+    if (valid.has(key) || !isEmptyRec(r)) continue;
+    const books = db.prepare('SELECT COUNT(*) n FROM books WHERE hakbun=? AND area=? AND subject=?').get(hakbun, r.area, r.subject || '').n;
+    if (books) continue;
+    db.prepare('DELETE FROM records WHERE hakbun=? AND area=? AND subject=?').run(hakbun, r.area, r.subject || '');
+  }
+  if (!groups.length) {
+    const recN = db.prepare('SELECT COUNT(*) n FROM records WHERE hakbun=?').get(hakbun).n;
+    const bookN = db.prepare('SELECT COUNT(*) n FROM books WHERE hakbun=?').get(hakbun).n;
+    if (!recN && !bookN) deleteStudent(db, hakbun);
+  }
+}
+
+// Explicit, user-confirmed: deletes THIS group's own area-records that no remaining group covers.
+function deleteGroup(db, tag) {
+  const areas = areasForGroup(db, tag);
+  const members = db.prepare('SELECT hakbun FROM memberships WHERE group_tag=?').all(tag).map((r) => r.hakbun);
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM groups WHERE group_tag=?').run(tag);
+    db.prepare('DELETE FROM memberships WHERE group_tag=?').run(tag);
+    for (const hakbun of members) {
+      const { groups, valid } = coveredAreas(db, hakbun, null);
+      for (const a of areas) {
+        const key = `${a.area}|${a.subject || ''}`;
+        if (valid.has(key)) continue;
+        db.prepare('DELETE FROM records WHERE hakbun=? AND area=? AND subject=?').run(hakbun, a.area, a.subject || '');
+        db.prepare('DELETE FROM books WHERE hakbun=? AND area=? AND subject=?').run(hakbun, a.area, a.subject || '');
+      }
+      if (!groups.length) {
+        const recN = db.prepare('SELECT COUNT(*) n FROM records WHERE hakbun=?').get(hakbun).n;
+        if (!recN) deleteStudent(db, hakbun);
+      }
+    }
+  });
+  tx();
+  return { removedMembers: members.length };
+}
+
+function removeMembership(db, hakbun, tag) {
+  db.prepare('DELETE FROM memberships WHERE hakbun=? AND group_tag=?').run(hakbun, tag);
+  pruneStudent(db, hakbun);
+}
+
+function renameGroup(db, oldTag, newTag) {
+  newTag = String(newTag || '').trim();
+  if (!newTag || oldTag === newTag) return getCategory(db, oldTag);
+  if (db.prepare('SELECT 1 FROM groups WHERE group_tag=?').get(newTag)) throw new Error('이미 있는 그룹명입니다');
+  const cat = getCategory(db, oldTag);
+  const perSubject = PER_SUBJECT_CATEGORIES.has(cat);
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE groups SET group_tag=? WHERE group_tag=?').run(newTag, oldTag);
+    db.prepare('UPDATE memberships SET group_tag=? WHERE group_tag=?').run(newTag, oldTag);
+    if (perSubject) {
+      for (const t of ['records', 'books', 'edits_log', 'exemplars_added']) {
+        db.prepare(`UPDATE ${t} SET subject=? WHERE subject=?`).run(newTag, oldTag);
+      }
+    }
+  });
+  tx();
+  return cat;
 }
 
 function limitFor(db, area) {
@@ -451,5 +530,6 @@ module.exports = {
   open, upsertStudent, listStudents, listGroups, getStudent, upsertRecord, saveLegacy, replaceBooks, deleteStudent,
   dashboardData, overlapReport, recentEdits, editsFor, qualityStats, promoteExemplar, listExemplars, areasForGroup,
   getAreasConfig, setAreasConfig, getCategory, upsertGroup, listGroupsDetailed, limitFor, bulkAddStudents,
+  deleteGroup, removeMembership, renameGroup,
   CATEGORIES, DEFAULT_AREAS_CONFIG,
 };

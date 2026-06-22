@@ -94,9 +94,18 @@ async function boot() {
   $('#vSettings').onclick = () => setView('settings');
   $('#dashFilter').onchange = renderDash;
   $('#cfgSave').onclick = saveConfig;
-  $('#upBtn').onclick = handleUpload;
   $('#tmplLink').onclick = downloadTemplate;
   $('#openFolderBtn').onclick = openDataFolder;
+  const dz = $('#dropzone');
+  dz.onclick = () => $('#upFile').click();
+  dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('drag'); };
+  dz.ondragleave = () => dz.classList.remove('drag');
+  dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('drag'); const f = e.dataTransfer.files[0]; if (f) previewUpload(f); };
+  $('#upFile').onchange = (e) => { const f = e.target.files[0]; if (f) previewUpload(f); };
+  $('#pasteBtn').onclick = previewPaste;
+  $('#upConfirm').onclick = confirmUpload;
+  $('#upModalClose').onclick = () => { $('#upModal').hidden = true; };
+  $('#upModal').onclick = (e) => { if (e.target === $('#upModal')) $('#upModal').hidden = true; };
   $('#stuSearch').oninput = onSearch;
   $('#sortToggle').onclick = () => { state.sortUnwritten = !state.sortUnwritten; $('#sortToggle').textContent = state.sortUnwritten ? '미작성순' : '학번순'; renderTree(); };
   document.addEventListener('keydown', onKey);
@@ -666,18 +675,90 @@ function renderSettings() {
   if (!upSel.options.length) upSel.innerHTML = cats.map((c) => `<option>${esc(c)}</option>`).join('');
   upSel.onchange = updateUploadHint;
   updateUploadHint();
+  renderManage();
+}
+
+function renderManage() {
+  const gs = state.groupsList || [];
+  if (!gs.length) { $('#managePanel').innerHTML = '<div class="empty">등록된 그룹이 없습니다</div>'; return; }
+  state.mgExpanded = state.mgExpanded || new Set();
+  const total = gs.reduce((s, g) => s + (g.n || 0), 0);
+  let html = `<div class="mg-sum">그룹 ${gs.length} · 학생 ${total}명</div>`;
+  for (const cat of (state.config.categories || [])) {
+    const list = gs.filter((g) => g.category === cat);
+    if (!list.length) continue;
+    html += `<div class="mg-cat-h">${esc(cat)}</div>`;
+    for (const g of list) {
+      const exp = state.mgExpanded.has(g.group_tag);
+      html += `<div class="mg-grp">
+        <div class="mg-row">
+          <button class="mg-caret" data-g="${esc(g.group_tag)}">${exp ? '▾' : '▸'}</button>
+          <span class="mg-name">${esc(g.group_tag)}</span>
+          <span class="mg-n">${g.n}명</span>
+          <span class="spacer"></span>
+          <button class="mg-rename btn-ghost" data-g="${esc(g.group_tag)}">이름변경</button>
+          <button class="mg-del btn-ghost" data-g="${esc(g.group_tag)}">삭제</button>
+        </div>
+        <div class="mg-students" ${exp ? '' : 'hidden'}>${exp ? renderMgStudents(g.group_tag) : ''}</div>
+      </div>`;
+    }
+  }
+  $('#managePanel').innerHTML = html;
+  $('#managePanel').querySelectorAll('.mg-caret').forEach((b) => { b.onclick = () => toggleMg(b.dataset.g); });
+  $('#managePanel').querySelectorAll('.mg-rename').forEach((b) => { b.onclick = () => renameGroupUI(b.dataset.g); });
+  $('#managePanel').querySelectorAll('.mg-del').forEach((b) => { b.onclick = () => deleteGroupUI(b.dataset.g); });
+  $('#managePanel').querySelectorAll('.mg-remove').forEach((b) => { b.onclick = () => removeMemberUI(b.dataset.h, b.dataset.g); });
+}
+
+function renderMgStudents(tag) {
+  const list = state.studsByGroup[tag];
+  if (!list) return '<div class="muted">불러오는 중…</div>';
+  if (!list.length) return '<div class="muted">학생 없음</div>';
+  return list.map((s) => `<div class="mg-stu"><span>${esc(s.hakbun)} ${esc(s.name)}</span><button class="mg-remove btn-ghost" data-h="${esc(s.hakbun)}" data-g="${esc(tag)}">빼기</button></div>`).join('');
+}
+
+async function toggleMg(tag) {
+  state.mgExpanded = state.mgExpanded || new Set();
+  if (state.mgExpanded.has(tag)) state.mgExpanded.delete(tag);
+  else { state.mgExpanded.add(tag); if (!state.studsByGroup[tag]) await loadGroup(tag); }
+  renderManage();
+}
+
+async function renameGroupUI(tag) {
+  const nn = prompt('새 그룹명', tag);
+  if (!nn || nn.trim() === tag) return;
+  const r = await fetch(`/api/groups/${encodeURIComponent(tag)}/rename`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ newTag: nn.trim() }) });
+  const d = await r.json();
+  if (!r.ok) { showToast(d.error || '변경 실패'); return; }
+  delete state.studsByGroup[tag];
+  await refreshGroups(); renderSettings(); await loadList();
+  showToast('✓ 그룹명 변경됨');
+}
+
+async function deleteGroupUI(tag) {
+  if (!confirm(`'${tag}' 그룹을 삭제할까요?\n다른 그룹에 없는 소속 학생과 그 기록도 함께 삭제됩니다. 되돌릴 수 없습니다.`)) return;
+  await j(`/api/groups/${encodeURIComponent(tag)}`, { method: 'DELETE' });
+  delete state.studsByGroup[tag];
+  state.mgExpanded.delete(tag);
+  await refreshGroups(); renderSettings(); await loadList();
+  showToast('✓ 그룹 삭제됨');
+}
+
+async function removeMemberUI(hakbun, tag) {
+  if (!confirm(`${hakbun} 학생을 '${tag}'에서 뺄까요?\n작성한 기록은 보존됩니다. (다른 그룹에도 없고 작성 내용이 전혀 없을 때만 학생이 정리됩니다)`)) return;
+  await j(`/api/students/${encodeURIComponent(hakbun)}/membership/${encodeURIComponent(tag)}`, { method: 'DELETE' });
+  await loadGroup(tag); await refreshGroups(); renderManage(); await loadList();
 }
 
 function updateUploadHint() {
   const cat = $('#upCategory').value;
   const hints = {
-    담임: '담임 시트: 학번·이름. 아래 그룹명(반)으로 등록됩니다.',
-    세특: '세특 시트: 과목명·분반·학번·이름. 과목명+분반이 그룹이 됩니다(그룹명 입력 불필요).',
-    동아리: '동아리 시트: 동아리명·학번·이름. 동아리명이 그룹이 됩니다.',
-    기타: '기타 시트: 구분·학번·이름. 구분값이 그룹이 됩니다.',
+    담임: '담임: 파일은 학번·이름. 그룹명을 비우면 ‘우리반’으로 등록됩니다.',
+    세특: '세특: 파일에 과목명·분반 열이 있으면 그 값으로, 없으면 위 그룹명으로 등록.',
+    동아리: '동아리: 파일에 동아리명 열이 있으면 그 값으로, 없으면 위 그룹명으로 등록.',
+    기타: '기타: 파일에 구분 열이 있으면 그 값으로, 없으면 위 그룹명으로 등록.',
   };
   $('#upHint').textContent = hints[cat] || '';
-  $('#upGroupLabel').hidden = cat !== '담임';
 }
 
 function customRow(cat, area, limit) {
@@ -722,6 +803,39 @@ async function saveConfig() {
   setTimeout(() => { $('#cfgMsg').textContent = ''; }, 1800);
 }
 
+const HMAP = {
+  학번: '학번', 학번호: '학번', 학적번호: '학번', studentid: '학번', id: '학번',
+  이름: '이름', 성명: '이름', name: '이름',
+  과목명: '과목명', 과목: '과목명', 교과: '과목명', 강좌명: '과목명', 강좌: '과목명',
+  분반: '분반', 반: '분반', 그룹: '분반', 그룹명: '분반',
+  동아리명: '동아리명', 동아리: '동아리명', 부서: '동아리명',
+  구분: '구분', 분류: '구분',
+};
+function canonKeyOf(k) {
+  const nk = String(k == null ? '' : k).replace(/\s+/g, '');
+  return HMAP[nk] || HMAP[nk.toLowerCase()] || null;
+}
+function looksHeader(cells) {
+  return cells.map((c) => String(c == null ? '' : c).replace(/\s+/g, '')).some((c) => HMAP[c] || HMAP[c.toLowerCase()]);
+}
+function rowsFromAoa(aoa) {
+  const rows = (aoa || []).filter((r) => Array.isArray(r) && r.some((c) => String(c == null ? '' : c).trim()));
+  if (!rows.length) return [];
+  if (looksHeader(rows[0])) {
+    const cols = rows[0].map(canonKeyOf);
+    return rows.slice(1).map((row) => {
+      const o = {};
+      cols.forEach((c, i) => { if (c && o[c] == null) o[c] = row[i]; });
+      return o;
+    });
+  }
+  // headerless → positional: 학번, 이름
+  return rows.map((row) => ({ 학번: row[0], 이름: row[1] }));
+}
+function aoaFromSheet(ws) {
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+}
+
 function parseFile(file, sheetName) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -730,11 +844,17 @@ function parseFile(file, sheetName) {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array' });
         const pick = sheetName && wb.SheetNames.includes(sheetName) ? sheetName : wb.SheetNames[0];
-        resolve(XLSX.utils.sheet_to_json(wb.Sheets[pick], { defval: '' }));
+        resolve(rowsFromAoa(aoaFromSheet(wb.Sheets[pick])));
       } catch (err) { reject(err); }
     };
     reader.readAsArrayBuffer(file);
   });
+}
+
+function parsePasted(text) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n').filter((l) => l.trim());
+  const aoa = lines.map((l) => (l.indexOf('\t') >= 0 ? l.split('\t') : (l.indexOf(',') >= 0 ? l.split(',') : l.split(/\s{1,}/))).map((c) => c.trim()));
+  return rowsFromAoa(aoa);
 }
 
 const TMPL_COLS = {
@@ -752,15 +872,17 @@ const TMPL_EX = {
 
 function rowGroup(cat, r, fallback) {
   const g = (k) => String(r[k] != null ? r[k] : '').trim();
-  if (cat === '세특') { const s = g('과목명'); const b = g('분반'); return s ? (b ? `${s} ${b}` : s) : ''; }
-  if (cat === '동아리') return g('동아리명');
-  if (cat === '기타') return g('구분');
+  if (cat === '세특') { const s = g('과목명'); const b = g('분반'); const jn = s ? (b ? `${s} ${b}` : s) : ''; return jn || fallback; }
+  if (cat === '동아리') return g('동아리명') || fallback;
+  if (cat === '기타') return g('구분') || fallback;
   return fallback;
 }
 
 function downloadTemplate() {
+  const checked = [...document.querySelectorAll('.tmpl-cat:checked')].map((c) => c.value);
+  const cats = checked.length ? checked : (state.config.categories || ['담임', '세특', '동아리', '기타']);
   const wb = XLSX.utils.book_new();
-  for (const cat of (state.config.categories || ['담임', '세특', '동아리', '기타'])) {
+  for (const cat of cats) {
     const ws = XLSX.utils.aoa_to_sheet([TMPL_COLS[cat], ...TMPL_EX[cat]]);
     ws['!cols'] = TMPL_COLS[cat].map(() => ({ wch: 13 }));
     XLSX.utils.book_append_sheet(wb, ws, cat);
@@ -768,34 +890,69 @@ function downloadTemplate() {
   XLSX.writeFile(wb, '생기부-학생명단-템플릿.xlsx');
 }
 
-async function handleUpload() {
-  const file = $('#upFile').files[0];
-  const fallback = ($('#upGroup').value || '').trim();
+async function previewUpload(file) {
+  if (!file) return;
   const category = $('#upCategory').value;
-  if (!file) { $('#upMsg').textContent = '파일을 선택하세요'; return; }
-  if (category === '담임' && !fallback) { $('#upMsg').textContent = '담임은 그룹명(반)을 입력하세요'; return; }
-  $('#upMsg').textContent = '처리 중…';
+  $('#upMsg').textContent = '읽는 중…';
   let rows;
   try { rows = await parseFile(file, category); } catch (e) { $('#upMsg').textContent = '파싱 실패: ' + e.message; return; }
+  previewRows(rows);
+}
+
+function previewPaste() {
+  const rows = parsePasted($('#pasteBox').value);
+  if (!rows.length) { $('#upMsg').textContent = '붙여넣은 내용이 없습니다'; return; }
+  previewRows(rows);
+}
+
+function previewRows(rows) {
+  const category = $('#upCategory').value;
+  const fallback = ($('#upGroup').value || '').trim() || (category === '담임' ? '우리반' : '');
   const groups = {};
+  let noHakbun = 0; let noGroup = 0;
   for (const r of rows) {
     const hakbun = String(r['학번'] != null ? r['학번'] : (r.hakbun || '')).trim();
-    if (!hakbun) continue;
+    if (!hakbun) { noHakbun += 1; continue; }
     const grp = rowGroup(category, r, fallback);
-    if (!grp) continue;
+    if (!grp) { noGroup += 1; continue; }
     (groups[grp] = groups[grp] || []).push({ hakbun, name: String(r['이름'] || r.name || '').trim() });
   }
   const names = Object.keys(groups);
-  if (!names.length) { $('#upMsg').textContent = '등록할 행이 없습니다 — 학번·그룹 열을 확인하세요'; return; }
-  $('#upPreview').innerHTML = names.map((g) => `<div class="muted">· <b>${esc(g)}</b> ${groups[g].length}명</div>`).join('');
+  if (!names.length) {
+    const why = noGroup ? '그룹을 정할 수 없습니다 — 과목명/동아리명/구분 열이 없으면 위 ‘그룹명’을 입력하세요' : '학번이 있는 행이 없습니다';
+    $('#upMsg').textContent = '등록할 학생 0명 — ' + why;
+    return;
+  }
+  state.pendingUpload = { category, groups };
+  const total = names.reduce((s, n) => s + groups[n].length, 0);
+  $('#upModalBody').innerHTML = names.map((g) =>
+    `<div class="up-grp"><div class="up-grp-head">(${esc(category)}) <b>${esc(g)}</b> <span class="muted">${groups[g].length}명</span></div>`
+    + `<div class="up-students muted">${groups[g].slice(0, 40).map((s) => esc(s.hakbun + ' ' + s.name)).join(', ')}${groups[g].length > 40 ? ' …' : ''}</div></div>`).join('');
+  const warn = (noHakbun || noGroup) ? `<div class="muted" style="margin-top:8px">제외된 행: 학번없음 ${noHakbun} · 그룹없음 ${noGroup}</div>` : '';
+  $('#upModalBody').innerHTML += warn;
+  $('#upModalSum').textContent = `${names.length}개 그룹 · ${total}명 추가`;
+  $('#upMsg').textContent = '';
+  $('#upModal').hidden = false;
+}
+
+async function confirmUpload() {
+  const pu = state.pendingUpload;
+  if (!pu) return;
+  $('#upConfirm').disabled = true;
   let total = 0;
-  for (const g of names) {
-    const res = await j('/api/students/bulk', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ group_tag: g, category, students: groups[g] }) });
+  for (const g of Object.keys(pu.groups)) {
+    const res = await j('/api/students/bulk', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ group_tag: g, category: pu.category, students: pu.groups[g] }) });
     total += res.added;
   }
-  $('#upMsg').textContent = `✓ ${total}명 · ${names.length}개 그룹 등록됨`;
+  $('#upConfirm').disabled = false;
+  $('#upModal').hidden = true;
+  state.pendingUpload = null;
+  $('#upFile').value = '';
+  if ($('#pasteBox')) $('#pasteBox').value = '';
+  $('#upMsg').textContent = `✓ ${total}명 등록됨`;
   await refreshGroups();
-  loadList();
+  await loadList();
+  if (state.view === 'settings') renderSettings();
 }
 
 boot();
