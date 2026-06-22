@@ -152,6 +152,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); box-sha
   background: var(--surface-2); color: var(--ink-faint); white-space: nowrap; letter-spacing: 0;
 }
 .badge.미작성 { background: var(--surface-2); color: var(--ink-faint); }
+.status-chip { border: none; cursor: pointer; font-size: 12.5px; padding: 5px 14px; }
+.status-chip:hover { filter: brightness(0.96); box-shadow: 0 0 0 2px var(--accent-soft); }
 .badge.초안 { background: #e6eef6; color: var(--blue); }
 .badge.검증 { background: var(--amber-bg); color: var(--amber); }
 .badge.완료 { background: var(--green-bg); color: var(--green); }

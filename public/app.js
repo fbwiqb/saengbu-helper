@@ -115,6 +115,7 @@ async function boot() {
     if (sel && state.spellErrors[Number(sel.dataset.idx)]) state.spellErrors[Number(sel.dataset.idx)].choice = sel.value;
   });
   $('#saveBtn').onclick = () => saveRecord();
+  $('#statusChip').onclick = cycleStatus;
   $('#copyBtn').onclick = copyArea;
   $('#spellBtn').onclick = runSpell;
   $('#histBtn').onclick = openHistory;
@@ -346,13 +347,29 @@ async function openStudent(hakbun, group) {
   selectArea(areas[0]);
 }
 
+const STATUS_CYCLE = ['미작성', '초안', '검증', '완료'];
+
+function setStatusChip(st) {
+  state.curStatus = STATUS_CYCLE.includes(st) ? st : '미작성';
+  const el = $('#statusChip');
+  if (el) { el.textContent = state.curStatus; el.className = 'status-chip badge ' + state.curStatus; }
+}
+
+function cycleStatus() {
+  if (!state.hakbun || !state.area) return;
+  const i = STATUS_CYCLE.indexOf(state.curStatus || '미작성');
+  setStatusChip(STATUS_CYCLE[(i + 1) % STATUS_CYCLE.length]);
+  saveRecord(true);
+  showToast('상태: ' + state.curStatus);
+}
+
 function selectArea(area) {
   state.area = area;
   state.subject = PER_SUBJECT.has(catFor(state.group)) ? (state.group || '') : '';
   $('#tabs').querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.a === area));
   const rec = (state.student.records || []).find((r) => r.area === area && r.subject === state.subject) || {};
   $('#body').value = rec.body || '';
-  $('#status').value = rec.status || '미작성';
+  setStatusChip(rec.status || '미작성');
   state.spellErrors = []; state.spellHlIdx = null; state.spellBaseText = ''; state.spellUndo = null;
   showEdit();
   renderAssist();
@@ -730,7 +747,7 @@ async function saveRecord(silent) {
   if (!state.hakbun || !state.area) return;
   const url = `/api/records/${state.hakbun}/${encodeURIComponent(state.area)}?subject=${encodeURIComponent(state.subject)}`;
   state.student = await j(url, { method: 'PUT', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ body: $('#body').value, status: $('#status').value }) });
+    body: JSON.stringify({ body: $('#body').value, status: state.curStatus || '미작성' }) });
   state.dirty = false;
   await loadList();
   if (!silent) showToast('✓ 저장됨');
