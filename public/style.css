@@ -409,7 +409,6 @@ mark.hl { background: #fff07a; color: inherit; border-radius: 3px; padding: 0 1p
 .cfg-del { padding: 5px 9px !important; font-size: 12px; }
 .cfg-add { margin-top: 6px; padding: 6px 12px !important; font-size: 12px; }
 .cfg-actions { display: flex; align-items: center; gap: 12px; margin: 16px 0 4px; }
-.upload-form { max-width: 640px; }
 .upload-form .row { margin-bottom: 12px; align-items: center; }
 .upload-form .row:last-child { margin-bottom: 0; }
 .upload-form input[type="file"] { flex: 1; font-size: 13px; }
