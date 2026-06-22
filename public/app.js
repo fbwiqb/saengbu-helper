@@ -127,6 +127,7 @@ async function boot() {
   $('#vDash').onclick = () => setView('dash');
   $('#vSettings').onclick = () => setView('settings');
   $('#dashFilter').onchange = renderDash;
+  $('#dashExport').onclick = exportDash;
   $('#cfgSave').onclick = saveConfig;
   $('#tmplLink').onclick = downloadTemplate;
   $('#openFolderBtn').onclick = openDataFolder;
@@ -204,9 +205,9 @@ function sortStuds(list) {
 
 function progBadge(s) {
   const p = s.prog;
-  if (!p || !p.total) return `<span class="badge">${esc(s.status || '미작성')}</span>`;
-  const cls = p.done >= p.total ? '완료' : (p.started ? '초안' : '');
-  return `<span class="badge ${cls}" title="저장 ${p.done} / 전체 ${p.total}">${p.done}/${p.total}</span>`;
+  if (!p || !p.total) return `<span class="badge 미작성">${esc(s.status || '미작성')}</span>`;
+  const st = p.done >= p.total ? '완료' : (p.started ? '초안' : '미작성');
+  return `<span class="badge ${st}" title="완료 ${p.done} / 전체 ${p.total}">${st} ${p.done}/${p.total}</span>`;
 }
 
 function renderStuds(tag, q) {
@@ -555,10 +556,28 @@ function toggleSpellHighlight(idx) {
   markSpellActive();
 }
 
+function showAppliedOverlay(term) {
+  state.hlMode = true; state.sentMode = false; state.hlTerm = term; state.spellHlIdx = null;
+  const text = $('#body').value;
+  const html = esc(text).split(esc(term)).join(`<mark class="hl spell-fixed">${esc(term)}</mark>`);
+  $('#sentView').innerHTML = `<div class="hl-head">✓ ‘<b>${esc(term)}</b>’(으)로 반영됨 — 편집하려면 ‘편집으로’</div><div class="hlview">${html}</div>`;
+  $('#body').hidden = true; $('#sentView').hidden = false;
+  $('#sentToggle').classList.add('sel'); $('#sentToggle').textContent = '편집으로';
+  markSpellActive();
+}
+
+function showOverlayPlain() {
+  state.hlMode = true; state.sentMode = false; state.hlTerm = null; state.spellHlIdx = null;
+  const text = $('#body').value;
+  $('#sentView').innerHTML = `<div class="hl-head">검토 보기 — 편집하려면 ‘편집으로’</div><div class="hlview">${esc(text)}</div>`;
+  $('#body').hidden = true; $('#sentView').hidden = false;
+  $('#sentToggle').classList.add('sel'); $('#sentToggle').textContent = '편집으로';
+  markSpellActive();
+}
+
 function applySpell(idx) {
   const e = state.spellErrors[idx];
   if (!e) return;
-  if (state.spellHlIdx != null) showEdit();
   const cand = e.choice || (e.suggest || [])[0] || '';
   if (!cand) return;
   const cur = $('#body').value;
@@ -575,6 +594,7 @@ function applySpell(idx) {
   state.dirty = true;
   renderAssist();
   removeSpellRow(idx);
+  showAppliedOverlay(cand);
   showToastUndo(`✓ '${e.orig}' → '${cand}' 반영 (저장 시 기록)`);
 }
 
@@ -589,7 +609,7 @@ function showToastUndo(msg) {
       if (!state.spellUndo) return;
       $('#body').value = state.spellUndo.text;
       state.spellBaseText = state.spellUndo.text;
-      state.dirty = true; renderAssist();
+      state.dirty = true; showEdit(); renderAssist();
       state.spellUndo = null;
       showToast('되돌렸습니다');
     };
@@ -600,9 +620,10 @@ function showToastUndo(msg) {
 async function dismissSpell(idx) {
   const e = state.spellErrors[idx];
   if (!e) return;
-  if (state.spellHlIdx === idx) showEdit();
+  const wasHl = state.spellHlIdx === idx;
   state.spellIgnore.add(e.orig);
   removeSpellRow(idx);
+  if (wasHl) showOverlayPlain();
   try {
     const list = await j('/api/spell-ignore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ word: e.orig }) });
     state.spellIgnore = new Set(list);
@@ -770,6 +791,29 @@ async function renderDash() {
 async function openWrite(hakbun, group, area) {
   await openStudent(hakbun, group);
   if (area) selectArea(area);
+}
+
+async function exportDash() {
+  const group = state.group;
+  if (!group) { showToast('그룹을 먼저 선택하세요'); return; }
+  const d = await j('/api/dashboard?group=' + encodeURIComponent(group));
+  if (!d.rows.length) { showToast('내보낼 학생이 없습니다'); return; }
+  const head = ['학번', '이름', ...d.areas];
+  const aoa = [head];
+  for (const r of d.rows) {
+    const row = [r.hakbun, r.name];
+    for (const area of d.areas) {
+      const c = r.cells.find((x) => x.area === area);
+      row.push(c ? (c.body || '') : '');
+    }
+    aoa.push(row);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 11 }, { wch: 10 }, ...d.areas.map(() => ({ wch: 60 }))];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '생기부');
+  XLSX.writeFile(wb, `생기부_${group}.xlsx`);
+  showToast(`✓ ${d.rows.length}명 엑셀로 내보냈습니다`);
 }
 
 
