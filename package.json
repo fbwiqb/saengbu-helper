@@ -1,6 +1,6 @@
 {
   "name": "saengbu-helper",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "type": "commonjs",
   "main": "main.js",
@@ -26,6 +26,7 @@
     "productName": "생기부 입력 도우미",
     "files": [
       "main.js",
+      "preload.js",
       "src/**/*",
       "public/**/*",
       "data/**/*",

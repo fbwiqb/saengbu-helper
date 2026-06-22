@@ -12,6 +12,17 @@ function createApp(db) {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.static(path.join(__dirname, '../public')));
 
+  app.post('/api/open-folder', (_req, res) => {
+    try {
+      const { shell } = require('electron');
+      const dir = path.resolve(path.dirname(process.env.DB_FILE || 'saengbu.db'));
+      shell.openPath(dir);
+      res.json({ ok: true, dir });
+    } catch (e) {
+      res.status(400).json({ error: '데스크톱 앱에서만 폴더를 열 수 있습니다', detail: String(e.message || e) });
+    }
+  });
+
   app.get('/api/forbidden', (_req, res) => res.json(FORBIDDEN));
   app.get('/api/byte-targets', (_req, res) => res.json(TARGETS));
 

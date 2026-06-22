@@ -96,10 +96,12 @@ async function boot() {
   $('#cfgSave').onclick = saveConfig;
   $('#upBtn').onclick = handleUpload;
   $('#tmplLink').onclick = downloadTemplate;
+  $('#openFolderBtn').onclick = openDataFolder;
   $('#stuSearch').oninput = onSearch;
   $('#sortToggle').onclick = () => { state.sortUnwritten = !state.sortUnwritten; $('#sortToggle').textContent = state.sortUnwritten ? '미작성순' : '학번순'; renderTree(); };
   document.addEventListener('keydown', onKey);
   window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
+  initUpdater();
   if (!state.groupsList.length) { setView('settings'); return; }
   if (state.group) state.expanded.add(state.group);
   await loadList();
@@ -515,6 +517,35 @@ async function restoreVersion(idx) {
 }
 
 function closeHistory() { $('#histModal').hidden = true; }
+
+function showUpd(msg, percent, ready) {
+  $('#updBanner').hidden = false;
+  $('#updMsg').textContent = msg;
+  $('#updTrack').hidden = ready || percent == null;
+  if (percent != null) $('#updFill').style.width = Math.min(100, percent) + '%';
+  $('#updRestart').hidden = !ready;
+}
+
+function initUpdater() {
+  if (!window.updater) return;
+  $('#updRestart').onclick = () => window.updater.restart();
+  $('#updClose').onclick = () => { $('#updBanner').hidden = true; };
+  window.updater.onAvailable((d) => showUpd(`새 버전 ${d.version || ''} 발견 — 다운로드 준비 중…`, 0, false));
+  window.updater.onProgress((d) => showUpd(`업데이트 다운로드 중… ${Math.round(d.percent || 0)}%`, d.percent || 0, false));
+  window.updater.onDownloaded((d) => showUpd(`새 버전 ${d.version || ''} 준비 완료 — 재시작하면 적용됩니다`, 100, true));
+}
+
+async function openDataFolder() {
+  $('#folderMsg').textContent = '여는 중…';
+  try {
+    const r = await fetch('/api/open-folder', { method: 'POST' });
+    const d = await r.json();
+    $('#folderMsg').textContent = r.ok ? '✓ 폴더를 열었습니다' : (d.error || '열기 실패');
+  } catch (e) {
+    $('#folderMsg').textContent = '열기 실패';
+  }
+  setTimeout(() => { $('#folderMsg').textContent = ''; }, 3000);
+}
 
 async function saveRecord(silent) {
   if (!state.hakbun || !state.area) return;

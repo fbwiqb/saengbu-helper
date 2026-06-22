@@ -39,6 +39,19 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
+.upd-banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 2000;
+  display: flex; align-items: center; gap: 14px; padding: 10px 18px;
+  background: var(--accent); color: #fbf7ef; box-shadow: 0 2px 12px rgba(40,34,28,.25);
+  font-size: 13px; font-weight: 600;
+}
+.upd-banner .upd-track { flex: 0 1 280px; height: 8px; background: rgba(255,255,255,.28); border-radius: 99px; overflow: hidden; }
+#updFill { height: 100%; width: 0; background: #fbf7ef; border-radius: 99px; transition: width .2s; }
+.upd-btn { padding: 5px 14px; border-radius: 7px; border: none; background: #fbf7ef; color: var(--accent-ink); font-weight: 700; cursor: pointer; }
+.upd-btn:hover { filter: brightness(.96); }
+.upd-x { margin-left: auto; background: none; border: none; color: #fbf7ef; cursor: pointer; font-size: 14px; opacity: .8; }
+.upd-x:hover { opacity: 1; }
+
 .listbar { display: flex; gap: 6px; padding: 0 14px 10px; align-items: center; }
 .listbar #stuSearch { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); outline: none; }
 .listbar #stuSearch:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }

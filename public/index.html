@@ -8,6 +8,13 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div id="updBanner" class="upd-banner" hidden>
+    <span id="updMsg"></span>
+    <div id="updTrack" class="upd-track" hidden><div id="updFill"></div></div>
+    <button id="updRestart" class="upd-btn" hidden>지금 재시작</button>
+    <button id="updClose" class="upd-x" title="닫기">✕</button>
+  </div>
+
   <aside id="sidebar">
     <div class="brand">
       <span class="brand-mark">生</span>
@@ -80,6 +87,15 @@
           <span id="upMsg" class="muted"></span>
         </div>
         <div id="upPreview"></div>
+      </div>
+
+      <h2>데이터 / 백업</h2>
+      <p class="muted">생기부 기록은 아래 폴더의 <b>saengbu.db</b> 파일에 저장됩니다. 백업하려면 이 파일을 복사해 두세요.</p>
+      <div class="card">
+        <div class="row" style="align-items:center">
+          <button id="openFolderBtn" class="btn-primary" type="button">데이터 폴더 열기</button>
+          <span id="folderMsg" class="muted"></span>
+        </div>
       </div>
     </section>
 
