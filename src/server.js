@@ -52,6 +52,17 @@ function createApp(db) {
 
   app.post('/api/extract-books', (req, res) => res.json(extractBooks((req.body || {}).text || '')));
 
+  app.post('/api/spellcheck', async (req, res) => {
+    const text = (req.body || {}).text || '';
+    if (!text.trim()) return res.json({ errors: [] });
+    try {
+      const errors = await require('./spell').check(text);
+      res.json({ errors });
+    } catch (e) {
+      res.status(502).json({ error: '부산대 검사기 연결/해석 실패', detail: String(e.message || e) });
+    }
+  });
+
   app.get('/api/students', (req, res) => res.json(db_.listStudents(db, req.query.group)));
 
   app.post('/api/students', (req, res) => {
@@ -111,6 +122,7 @@ function createApp(db) {
   app.get('/api/dashboard', (req, res) => res.json(db_.dashboardData(db, req.query.group)));
   app.get('/api/overlap', (req, res) => res.json(db_.overlapReport(db, req.query.group)));
   app.get('/api/edits', (req, res) => res.json(db_.recentEdits(db, req.query.group, req.query.limit)));
+  app.get('/api/history/:hakbun/:area', (req, res) => res.json(db_.editsFor(db, req.params.hakbun, req.params.area, req.query.subject || '')));
   app.get('/api/quality', (req, res) => res.json(db_.qualityStats(db, req.query.group)));
 
   app.post('/api/promote/:hakbun/:area', (req, res) => {

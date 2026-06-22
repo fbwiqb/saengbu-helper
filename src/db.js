@@ -174,6 +174,20 @@ function listStudents(db, group) {
   const rows = group
     ? db.prepare('SELECT s.* FROM students s JOIN memberships m ON s.hakbun=m.hakbun WHERE m.group_tag=? ORDER BY s.hakbun').all(group)
     : db.prepare('SELECT * FROM students ORDER BY hakbun').all();
+  if (group) {
+    const areas = areasForGroup(db, group);
+    const total = areas.length;
+    for (const s of rows) {
+      const recs = db.prepare('SELECT area,subject,status,bytes FROM records WHERE hakbun=?').all(s.hakbun);
+      let done = 0; let started = 0;
+      for (const { area, subject } of areas) {
+        const rec = recs.find((r) => r.area === area && (r.subject || '') === (subject || ''));
+        if (rec && rec.status === '완료') done += 1;
+        if (rec && (rec.bytes > 0 || (rec.status && rec.status !== '미작성'))) started += 1;
+      }
+      s.prog = { done, started, total };
+    }
+  }
   return rows;
 }
 
@@ -356,6 +370,11 @@ function recentEdits(db, group, limit = 20) {
     WHERE m.group_tag=? ORDER BY e.id DESC LIMIT ?`).all(group, lim);
 }
 
+function editsFor(db, hakbun, area, subject) {
+  return db.prepare('SELECT * FROM edits_log WHERE hakbun=? AND area=? AND subject=? ORDER BY id ASC')
+    .all(hakbun, area, subject || '');
+}
+
 function qualityStats(db, group) {
   const students = listStudents(db, group);
   const hakbuns = new Set(students.map((s) => s.hakbun));
@@ -430,7 +449,7 @@ function bulkAddStudents(db, group, category, rows) {
 
 module.exports = {
   open, upsertStudent, listStudents, listGroups, getStudent, upsertRecord, saveLegacy, replaceBooks, deleteStudent,
-  dashboardData, overlapReport, recentEdits, qualityStats, promoteExemplar, listExemplars, areasForGroup,
+  dashboardData, overlapReport, recentEdits, editsFor, qualityStats, promoteExemplar, listExemplars, areasForGroup,
   getAreasConfig, setAreasConfig, getCategory, upsertGroup, listGroupsDetailed, limitFor, bulkAddStudents,
   CATEGORIES, DEFAULT_AREAS_CONFIG,
 };
