@@ -35,7 +35,28 @@ CREATE TABLE IF NOT EXISTS exemplars_added (
   hakbun TEXT, area TEXT, subject TEXT DEFAULT '',
   text TEXT DEFAULT '', added_at TEXT DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS app_config (
+  key TEXT PRIMARY KEY, value TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS groups (
+  group_tag TEXT PRIMARY KEY, category TEXT DEFAULT '기타',
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `;
+
+const CATEGORIES = ['담임', '세특', '동아리', '기타'];
+const PER_SUBJECT_CATEGORIES = new Set(['세특', '동아리', '기타']);
+
+const DEFAULT_AREAS_CONFIG = {
+  담임: [
+    { area: '자율', limit: 1500 },
+    { area: '진로', limit: 1500 },
+    { area: '행특', limit: 900 },
+  ],
+  세특: [{ area: '세특', limit: 1500 }],
+  동아리: [{ area: '동아리', limit: 1500 }],
+  기타: [],
+};
 
 const RECORD_COLUMNS = [
   ['q_exp', 'INTEGER DEFAULT NULL'],
@@ -52,12 +73,87 @@ function migrateRecords(db) {
   }
 }
 
+function inferCategory(name) {
+  const g = String(name || '');
+  if (g.includes('담임')) return '담임';
+  if (g.includes('동아리')) return '동아리';
+  if (g.includes('세특')) return '세특';
+  return '세특';
+}
+
+function backfillGroups(db) {
+  const tagged = db.prepare('SELECT DISTINCT group_tag FROM memberships').all();
+  const ins = db.prepare('INSERT OR IGNORE INTO groups (group_tag, category) VALUES (?, ?)');
+  for (const { group_tag } of tagged) ins.run(group_tag, inferCategory(group_tag));
+}
+
+function seedConfig(db) {
+  const row = db.prepare('SELECT value FROM app_config WHERE key=?').get('areas_config');
+  if (!row) {
+    db.prepare('INSERT INTO app_config (key, value) VALUES (?, ?)')
+      .run('areas_config', JSON.stringify(DEFAULT_AREAS_CONFIG));
+  }
+}
+
 function open(file) {
   const db = new Database(file);
   db.pragma('journal_mode = WAL');
   db.exec(SCHEMA);
   migrateRecords(db);
+  seedConfig(db);
+  backfillGroups(db);
   return db;
+}
+
+function getAreasConfig(db) {
+  const row = db.prepare('SELECT value FROM app_config WHERE key=?').get('areas_config');
+  if (!row) return { ...DEFAULT_AREAS_CONFIG };
+  try {
+    return JSON.parse(row.value);
+  } catch {
+    return { ...DEFAULT_AREAS_CONFIG };
+  }
+}
+
+function setAreasConfig(db, config) {
+  const clean = {};
+  for (const cat of CATEGORIES) {
+    const list = Array.isArray(config[cat]) ? config[cat] : [];
+    clean[cat] = list
+      .filter((a) => a && a.area)
+      .map((a) => ({ area: String(a.area).trim(), limit: Number(a.limit) || 0 }))
+      .filter((a) => a.area && a.limit > 0);
+  }
+  db.prepare(`INSERT INTO app_config (key, value) VALUES ('areas_config', @v)
+    ON CONFLICT(key) DO UPDATE SET value=@v`).run({ v: JSON.stringify(clean) });
+  return clean;
+}
+
+function getCategory(db, group) {
+  const row = db.prepare('SELECT category FROM groups WHERE group_tag=?').get(group);
+  return row ? row.category : inferCategory(group);
+}
+
+function upsertGroup(db, group, category) {
+  const cat = CATEGORIES.includes(category) ? category : inferCategory(group);
+  db.prepare(`INSERT INTO groups (group_tag, category) VALUES (?, ?)
+    ON CONFLICT(group_tag) DO UPDATE SET category=excluded.category`).run(group, cat);
+  return cat;
+}
+
+function listGroupsDetailed(db) {
+  return db.prepare(`SELECT g.group_tag, g.category,
+      (SELECT COUNT(*) FROM memberships m WHERE m.group_tag=g.group_tag) n
+    FROM groups g ORDER BY g.category, g.group_tag`).all();
+}
+
+function limitFor(db, area) {
+  const cfg = getAreasConfig(db);
+  for (const cat of CATEGORIES) {
+    const found = (cfg[cat] || []).find((a) => a.area === area);
+    if (found) return found.limit;
+  }
+  return require('./bytes').TARGETS[area] || 0;
 }
 
 function upsertStudent(db, s) {
@@ -104,7 +200,7 @@ function upsertRecord(db, r) {
   params.subject = params.subject == null ? '' : params.subject;
   if (!params.subject && (params.area === '동아리' || params.area === '세특')) {
     const groups = db.prepare('SELECT group_tag FROM memberships WHERE hakbun=?').all(params.hakbun).map((m) => m.group_tag);
-    const matches = groups.filter((g) => areasForGroup(g).some((a) => a.area === params.area));
+    const matches = groups.filter((g) => areasForGroup(db, g).some((a) => a.area === params.area));
     if (matches.length === 1) params.subject = matches[0];
   }
   const prev = db.prepare('SELECT body, revised FROM records WHERE hakbun=? AND area=? AND subject=?')
@@ -147,15 +243,16 @@ function deleteStudent(db, hakbun) {
   db.prepare('DELETE FROM books WHERE hakbun=?').run(hakbun);
 }
 
-function areasForGroup(group) {
-  const g = String(group || '');
-  if (g.includes('담임')) return [{ area: '자율', subject: '' }, { area: '진로', subject: '' }, { area: '행특', subject: '' }];
-  if (g.includes('동아리')) return [{ area: '동아리', subject: g }];
-  return [{ area: '세특', subject: g }];
+function areasForGroup(db, group) {
+  const cat = getCategory(db, group);
+  const cfg = getAreasConfig(db);
+  const list = cfg[cat] || [];
+  const perSubject = PER_SUBJECT_CATEGORIES.has(cat);
+  return list.map((a) => ({ area: a.area, subject: perSubject ? String(group || '') : '' }));
 }
 
-function statusBytes(rec, area) {
-  const limit = require('./bytes').TARGETS[area] || 0;
+function statusBytes(db, rec, area) {
+  const limit = limitFor(db, area);
   const bytes = rec ? (rec.bytes || 0) : 0;
   const pct = limit ? Math.round((bytes / limit) * 1000) / 10 : 0;
   return { bytes, pct };
@@ -163,16 +260,16 @@ function statusBytes(rec, area) {
 
 function dashboardData(db, group) {
   const students = listStudents(db, group);
-  const areas = areasForGroup(group);
+  const areas = areasForGroup(db, group);
   const summary = { 미작성: 0, 초안: 0, 검증: 0, 완료: 0 };
   const rows = students.map((s) => {
     const recs = db.prepare('SELECT * FROM records WHERE hakbun=?').all(s.hakbun);
     const cells = areas.map(({ area, subject }) => {
       const rec = recs.find((r) => r.area === area && r.subject === subject);
       const status = rec ? (rec.status || '미작성') : '미작성';
-      const { bytes, pct } = statusBytes(rec, area);
+      const { bytes, pct } = statusBytes(db, rec, area);
       if (summary[status] !== undefined) summary[status] += 1;
-      return { area, subject, status, bytes, pct };
+      return { area, subject, status, bytes, pct, body: rec ? (rec.revised || rec.body || '') : '' };
     });
     return { hakbun: s.hakbun, name: s.name, cells };
   });
@@ -262,7 +359,7 @@ function recentEdits(db, group, limit = 20) {
 function qualityStats(db, group) {
   const students = listStudents(db, group);
   const hakbuns = new Set(students.map((s) => s.hakbun));
-  const groupFilter = group ? new Set(areasForGroup(group).map((a) => `${a.area} ${a.subject || ''}`)) : null;
+  const groupFilter = group ? new Set(areasForGroup(db, group).map((a) => `${a.area} ${a.subject || ''}`)) : null;
   const byArea = new Map();
   for (const h of hakbuns) {
     for (const r of db.prepare('SELECT * FROM records WHERE hakbun=?').all(h)) {
@@ -307,7 +404,33 @@ function listExemplars(db, group) {
     WHERE m.group_tag=? ORDER BY x.rowid DESC`).all(group);
 }
 
+function bulkAddStudents(db, group, category, rows) {
+  upsertGroup(db, group, category);
+  const tx = db.transaction((list) => {
+    let added = 0;
+    for (const r of list) {
+      const hakbun = String(r.hakbun || r['학번'] || '').trim();
+      if (!hakbun) continue;
+      upsertStudent(db, {
+        hakbun,
+        name: String(r.name || r['이름'] || '').trim() || null,
+        group_tag: group,
+        ban: r.ban != null ? String(r.ban) : (r['반'] != null ? String(r['반']) : null),
+        beonho: r.beonho != null ? Number(r.beonho) : (r['번호'] != null ? Number(r['번호']) : null),
+        gender: r.gender || r['성별'] || null,
+        naesin: r.naesin != null ? Number(r.naesin) : (r['내신'] != null ? Number(r['내신']) : null),
+        jeonhyeong: r.jeonhyeong || r['전형'] || null,
+      });
+      added += 1;
+    }
+    return added;
+  });
+  return tx(Array.isArray(rows) ? rows : []);
+}
+
 module.exports = {
   open, upsertStudent, listStudents, listGroups, getStudent, upsertRecord, saveLegacy, replaceBooks, deleteStudent,
   dashboardData, overlapReport, recentEdits, qualityStats, promoteExemplar, listExemplars, areasForGroup,
+  getAreasConfig, setAreasConfig, getCategory, upsertGroup, listGroupsDetailed, limitFor, bulkAddStudents,
+  CATEGORIES, DEFAULT_AREAS_CONFIG,
 };

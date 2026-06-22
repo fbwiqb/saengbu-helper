@@ -16,9 +16,9 @@ function calcBytes(text) {
   return total;
 }
 
-function evaluate(text, area) {
+function evaluate(text, area, limitOverride) {
   const bytes = calcBytes(text);
-  const limit = TARGETS[area] || 0;
+  const limit = limitOverride != null && limitOverride > 0 ? limitOverride : (TARGETS[area] || 0);
   const pct = limit ? Math.round((bytes / limit) * 1000) / 10 : 0;
   let status = 'unknown';
   if (limit) {

@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>생기부 입력 도우미</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_two@1.2/NanumSquareNeo-Variable.woff2.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -24,11 +21,24 @@
       <button id="vStudent" class="sel">학생</button>
       <button id="vDash">대시보드</button>
       <button id="vOverlap">중복점검</button>
+      <button id="vSettings">설정</button>
+    </div>
+    <div class="listbar">
+      <input id="stuSearch" type="search" placeholder="학생 검색 (이름·학번)" />
+      <button id="sortToggle" class="btn-ghost" title="정렬 전환">학번순</button>
     </div>
     <ul id="studentList"></ul>
   </aside>
 
   <main id="main">
+    <section id="emptyState" hidden>
+      <div class="empty-card">
+        <div class="empty-mark">生</div>
+        <h2 id="emptyTitle">학생을 선택하세요</h2>
+        <p id="emptyMsg" class="muted">왼쪽 목록에서 학생을 고르거나, <b>+학생</b>으로 추가하세요.</p>
+      </div>
+    </section>
+
     <section id="dashView" hidden>
       <h2>그룹 진행률</h2>
       <div class="dash-head" id="dashProg"></div>
@@ -52,6 +62,39 @@
       <div id="overlapPairs"></div>
     </section>
 
+    <section id="settingsView" hidden>
+      <h2>분류별 영역·바이트 설정</h2>
+      <p class="muted">분류마다 작성할 영역을 체크하고 바이트 한도를 정하세요. 세특·동아리·기타는 과목/그룹명이 자동으로 붙습니다.</p>
+      <div id="cfgCards"></div>
+      <div class="cfg-actions">
+        <button id="cfgSave" class="btn-primary">설정 저장</button>
+        <span id="cfgMsg" class="muted"></span>
+      </div>
+
+      <h2>학생 템플릿 업로드</h2>
+      <p class="muted">엑셀(.xlsx) 또는 CSV 파일로 명단을 한 번에 등록합니다. 필수: 학번·이름 / 선택: 번호·성별·내신·전형.</p>
+      <div class="upload-form card">
+        <div class="row">
+          <label>분류
+            <select id="upCategory"></select>
+          </label>
+          <label id="upGroupLabel">그룹명(반)
+            <input id="upGroup" type="text" placeholder="예: 3-4담임" />
+          </label>
+        </div>
+        <div id="upHint" class="muted"></div>
+        <div class="row">
+          <input id="upFile" type="file" accept=".xlsx,.xls,.csv" />
+          <button id="tmplLink" class="btn-ghost" type="button">양식 다운로드</button>
+        </div>
+        <div class="row">
+          <button id="upBtn" class="btn-primary">업로드</button>
+          <span id="upMsg" class="muted"></span>
+        </div>
+        <div id="upPreview"></div>
+      </div>
+    </section>
+
     <header id="head" hidden>
       <span id="headInfo">학생을 선택하세요</span>
       <button id="nextBtn" class="btn-ghost">다음 미작성 ▶</button>
@@ -65,7 +108,11 @@
             <div class="glabel"><span id="gaugeArea"></span><span id="gaugeText" class="gnum"></span></div>
             <div class="track"><div id="gaugeFill"></div></div>
           </div>
+          <div class="editbar">
+            <button id="sentToggle" class="btn-ghost">문장별 보기</button>
+          </div>
           <textarea id="body" placeholder="생기부 본문을 입력하세요"></textarea>
+          <div id="sentView" class="sent-view" hidden></div>
         </div>
 
         <div class="card">
@@ -77,6 +124,7 @@
             <button id="copyBtn" class="btn-ghost">복사</button>
             <button id="saveBtn" class="btn-primary">저장</button>
           </div>
+          <div class="neis-guide muted">복사 후 NEIS → 학생부 → 해당 영역 입력란에 <b>붙여넣기(Ctrl+V)</b> · 단축키: 저장 <b>Ctrl+S</b>, 다음 미작성 <b>Ctrl+→</b></div>
         </div>
 
       </div>
@@ -85,6 +133,10 @@
         <div class="card">
           <h3>입력 점검</h3>
           <div id="warnings" class="warnings"></div>
+        </div>
+        <div class="card">
+          <h3>표현 빈도</h3>
+          <div id="freqPanel" class="freq"></div>
         </div>
         <div class="card">
           <h3>추출된 독서</h3>
@@ -97,6 +149,7 @@
       </div>
     </section>
   </main>
+  <script src="vendor/xlsx.full.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -6,9 +6,10 @@ const { createApp } = require('../src/server');
 function freshDb() { return open(':memory:'); }
 
 test('areasForGroup 그룹별 영역 결정', () => {
-  assert.deepStrictEqual(areasForGroup('3-4담임').map((a) => a.area), ['자율', '진로', '행특']);
-  assert.deepStrictEqual(areasForGroup('과학동아리'), [{ area: '동아리', subject: '과학동아리' }]);
-  assert.deepStrictEqual(areasForGroup('통합과학1'), [{ area: '세특', subject: '통합과학1' }]);
+  const db = freshDb();
+  assert.deepStrictEqual(areasForGroup(db, '3-4담임').map((a) => a.area), ['자율', '진로', '행특']);
+  assert.deepStrictEqual(areasForGroup(db, '과학동아리'), [{ area: '동아리', subject: '과학동아리' }]);
+  assert.deepStrictEqual(areasForGroup(db, '통합과학1'), [{ area: '세특', subject: '통합과학1' }]);
 });
 
 test('dashboardData 담임 요약/바이트/완료율', () => {

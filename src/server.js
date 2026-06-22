@@ -15,10 +15,39 @@ function createApp(db) {
   app.get('/api/forbidden', (_req, res) => res.json(FORBIDDEN));
   app.get('/api/byte-targets', (_req, res) => res.json(TARGETS));
 
+  app.get('/api/config', (_req, res) => res.json({ categories: db_.CATEGORIES, areas: db_.getAreasConfig(db) }));
+  app.put('/api/config', (req, res) => {
+    const saved = db_.setAreasConfig(db, (req.body || {}).areas || {});
+    res.json({ categories: db_.CATEGORIES, areas: saved });
+  });
+
+  app.get('/api/groups', (_req, res) => res.json(db_.listGroupsDetailed(db)));
+  app.post('/api/groups', (req, res) => {
+    const { group_tag, category } = req.body || {};
+    if (!group_tag) return res.status(400).json({ error: 'group_tag 필요' });
+    const cat = db_.upsertGroup(db, group_tag, category);
+    res.json({ group_tag, category: cat });
+  });
+
+  app.post('/api/students/bulk', (req, res) => {
+    const { group_tag, category, students } = req.body || {};
+    if (!group_tag) return res.status(400).json({ error: 'group_tag 필요' });
+    if (!Array.isArray(students) || !students.length) return res.status(400).json({ error: '학생 목록 필요' });
+    const added = db_.bulkAddStudents(db, group_tag, category, students);
+    res.json({ ok: true, added, group_tag });
+  });
+
   app.post('/api/verify', (req, res) => {
-    const { text = '', area = '' } = req.body || {};
-    const e = evaluate(text, area);
+    const { text = '', area = '', limit } = req.body || {};
+    const e = evaluate(text, area, Number(limit) || (area ? db_.limitFor(db, area) : 0));
     res.json({ ...e, overLimit: e.status === 'over', forbiddenHits: scan(text, FORBIDDEN) });
+  });
+
+  app.get('/api/template', (_req, res) => {
+    const csv = '﻿학번,이름,번호,성별,내신,전형\n30401,홍길동,1,남,3.50,농어촌\n';
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="student-template.csv"');
+    res.send(csv);
   });
 
   app.post('/api/extract-books', (req, res) => res.json(extractBooks((req.body || {}).text || '')));
