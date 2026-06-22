@@ -204,11 +204,14 @@ function sortStuds(list) {
   return list.sort((a, b) => String(a.hakbun).localeCompare(String(b.hakbun)));
 }
 
-function progBadge(s) {
+function progBadge(s, isOpen) {
+  if (isOpen && state.view === 'student' && state.area && state.curStatus) {
+    return `<span class="badge prog-chip ${state.curStatus}" title="현재 영역 ${esc(state.area)} 상태 · 클릭해 순환">${esc(state.area)} ${state.curStatus}</span>`;
+  }
   const p = s.prog;
-  if (!p || !p.total) return `<span class="badge 미작성">${esc(s.status || '미작성')}</span>`;
+  if (!p || !p.total) return `<span class="badge prog-chip 미작성" title="열린 학생이면 클릭해 현재 영역 상태 순환">${esc(s.status || '미작성')}</span>`;
   const st = p.done >= p.total ? '완료' : (p.started ? '초안' : '미작성');
-  return `<span class="badge ${st}" title="완료 ${p.done} / 전체 ${p.total}">${st} ${p.done}/${p.total}</span>`;
+  return `<span class="badge prog-chip ${st}" title="완료 ${p.done} / 전체 ${p.total} · 열린 학생이면 클릭해 현재 영역 순환">${st} ${p.done}/${p.total}</span>`;
 }
 
 function renderStuds(tag, q) {
@@ -216,10 +219,12 @@ function renderStuds(tag, q) {
   if (!list) return state.expanded.has(tag) ? '<li class="loading">불러오는 중…</li>' : '';
   list = sortStuds(list.filter((s) => !q || (`${s.hakbun} ${s.name}`).toLowerCase().includes(q)));
   if (!list.length) return q ? '<li class="empty">결과 없음</li>' : '<li class="empty">학생 없음</li>';
-  return list.map((s) =>
-    `<li data-h="${esc(s.hakbun)}" data-g="${esc(tag)}" class="${s.hakbun === state.hakbun && tag === state.group ? 'sel' : ''}">
+  return list.map((s) => {
+    const isOpen = s.hakbun === state.hakbun && tag === state.group;
+    return `<li data-h="${esc(s.hakbun)}" data-g="${esc(tag)}" class="${isOpen ? 'sel' : ''}">
        <span class="nm">${esc(s.hakbun)} ${esc(s.name)}</span>
-       ${progBadge(s)}</li>`).join('');
+       ${progBadge(s, isOpen)}</li>`;
+  }).join('');
 }
 
 function renderTree() {
@@ -249,6 +254,15 @@ function renderTree() {
   });
   tree.querySelectorAll('.grp-add').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); addStudent(b.dataset.g); }; });
   tree.querySelectorAll('li[data-h]').forEach((li) => { li.onclick = () => onStudentClick(li.dataset.h, li.dataset.g); });
+  tree.querySelectorAll('li[data-h] .prog-chip').forEach((chip) => {
+    chip.onclick = (e) => {
+      const li = chip.closest('li');
+      if (state.view === 'student' && state.area && state.hakbun === li.dataset.h && state.group === li.dataset.g) {
+        e.stopPropagation();
+        cycleStatus();
+      }
+    };
+  });
 }
 
 function onStudentClick(hakbun, group) {
@@ -375,6 +389,7 @@ function selectArea(area) {
   renderAssist();
   $('#spellPanel').innerHTML = '<div class="empty">‘맞춤법’ 버튼을 눌러 점검</div>';
   state.dirty = false;
+  renderTree();
 }
 
 async function gotoNextUnwritten() {
