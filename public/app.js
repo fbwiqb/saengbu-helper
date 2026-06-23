@@ -633,9 +633,10 @@ function applySpell(idx) {
 }
 
 function showToastUndo(msg) {
-  let t = document.getElementById('toast');
   showToast(msg);
+  const t = document.getElementById('toast');
   if (t) {
+    clearTimeout(showToast._t);
     const b = document.createElement('button');
     b.textContent = '되돌리기';
     b.style.cssText = 'margin-left:10px;background:#374151;color:#fff;border:1px solid #6b7280;border-radius:6px;padding:1px 8px;cursor:pointer;font-size:12px';
@@ -647,7 +648,13 @@ function showToastUndo(msg) {
       state.spellUndo = null;
       showToast('되돌렸습니다');
     };
+    const x = document.createElement('button');
+    x.textContent = '✕';
+    x.title = '닫기';
+    x.style.cssText = 'margin-left:8px;background:transparent;color:#cbd5e1;border:none;cursor:pointer;font-size:13px';
+    x.onclick = () => { t.style.opacity = '0'; };
     t.appendChild(b);
+    t.appendChild(x);
   }
 }
 
