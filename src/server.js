@@ -40,6 +40,18 @@ function createApp(db) {
     }
   });
 
+  app.post('/api/open-external', (req, res) => {
+    try {
+      const url = String((req.body || {}).url || '');
+      if (!/^https:\/\/github\.com\/fbwiqb\/saengbu-helper(\/|$)/.test(url)) return res.status(400).json({ error: '허용되지 않은 주소' });
+      const { shell } = require('electron');
+      shell.openExternal(url);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({ error: '데스크톱 앱에서만 열 수 있습니다', detail: String(e.message || e) });
+    }
+  });
+
   app.post('/api/reset', (req, res) => {
     try {
       if ((req.body || {}).confirm !== '삭제') return res.status(400).json({ error: "확인 문구('삭제')가 일치하지 않습니다" });

@@ -140,6 +140,8 @@ async function boot() {
   $('#tmplLink').onclick = downloadTemplate;
   $('#openFolderBtn').onclick = openDataFolder;
   $('#resetDataBtn').onclick = resetData;
+  $('#bugBtn').onclick = () => openIssue('bug');
+  $('#featBtn').onclick = () => openIssue('feat');
   $('#bakExportBtn').onclick = exportBackup;
   $('#bakImportBtn').onclick = importBackup;
   const dz = $('#dropzone');
@@ -526,19 +528,30 @@ async function runSpell() {
   if (!text) { $('#spellPanel').innerHTML = '<div class="empty">본문이 비어 있음</div>'; return; }
   if (state.spellHlIdx != null) showEdit();
   state.spellErrors = []; state.spellHlIdx = null;
+  const sp = ($('#body').value.match(/ {2,}/g) || []).length;
+  const spacingItem = sp ? { kind: 'spacing', orig: `이중 공백 ${sp}곳`, suggest: ['한 칸으로'], choice: '한 칸으로', help: '연속으로 들어간 공백을 한 칸으로 정리합니다.', helpOpen: false } : null;
   $('#spellPanel').innerHTML = '<div class="empty">부산대 검사기로 검사 중…</div>';
   try {
     const r = await fetch('/api/spellcheck', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
     const d = await r.json();
-    if (!r.ok) { $('#spellPanel').innerHTML = `<div class="warn-item err"><span class="ico">⚠</span><span>검사 실패 — ${esc(d.error || '연결 오류')}</span></div>`; return; }
+    if (!r.ok) throw new Error(d.error || '연결 오류');
     const errs = (d.errors || []).filter((e) => !state.spellIgnore.has(e.orig));
     state.spellErrors = errs.map((e) => ({ ...e, choice: (e.suggest || [])[0] || '', helpOpen: false }));
+    if (spacingItem) state.spellErrors.unshift(spacingItem);
     state.spellBaseText = $('#body').value;
     renderSpellPanel();
     const ignored = (d.errors || []).length - errs.length;
-    showToast(`맞춤법 의심 ${errs.length}건${ignored ? ` · 무시 ${ignored}` : ''}`);
+    showToast(`맞춤법 의심 ${errs.length}건${sp ? ` · 이중 공백 ${sp}곳` : ''}${ignored ? ` · 무시 ${ignored}` : ''}`);
   } catch (e) {
-    $('#spellPanel').innerHTML = '<div class="warn-item err"><span class="ico">⚠</span><span>검사기 연결 실패 — 인터넷 확인</span></div>';
+    if (spacingItem) {
+      state.spellErrors = [spacingItem];
+      state.spellBaseText = $('#body').value;
+      renderSpellPanel();
+      $('#spellPanel').insertAdjacentHTML('afterbegin', '<div class="warn-item err" style="margin-bottom:6px"><span class="ico">⚠</span><span>맞춤법 검사기 연결 실패 — 이중 공백만 표시</span></div>');
+      showToast(`이중 공백 ${sp}곳 · 맞춤법 검사 실패`);
+    } else {
+      $('#spellPanel').innerHTML = '<div class="warn-item err"><span class="ico">⚠</span><span>검사기 연결 실패 — 인터넷 확인</span></div>';
+    }
   }
 }
 
@@ -584,6 +597,7 @@ function markSpellActive() {
 function toggleSpellHighlight(idx) {
   const e = state.spellErrors[idx];
   if (!e) return;
+  if (e.kind === 'spacing') { showToast('‘반영’을 누르면 이중 공백이 한 칸으로 정리됩니다'); return; }
   if (state.spellHlIdx === idx) { showEdit(); return; }
   const text = $('#body').value;
   if (!text.includes(e.orig)) { showToast('본문에서 찾을 수 없음 — 검사 후 본문이 바뀌었을 수 있어요'); return; }
@@ -614,6 +628,16 @@ function showOverlayPlain() {
 function applySpell(idx) {
   const e = state.spellErrors[idx];
   if (!e) return;
+  if (e.kind === 'spacing') {
+    const cur0 = $('#body').value;
+    if (state.spellBaseText && cur0 !== state.spellBaseText) { showToast('본문이 검사 후 수정됨 — 다시 검사해 주세요'); return; }
+    state.spellUndo = { idx, text: cur0 };
+    const next0 = cur0.replace(/ {2,}/g, ' ');
+    $('#body').value = next0; state.spellBaseText = next0; state.dirty = true;
+    renderAssist(); removeSpellRow(idx); showOverlayPlain();
+    showToastUndo('✓ 이중 공백 정리됨 (저장 시 기록)');
+    return;
+  }
   const cand = e.choice || (e.suggest || [])[0] || '';
   if (!cand) return;
   const cur = $('#body').value;
@@ -823,17 +847,40 @@ function askText(label, def) {
   });
 }
 
+const REPO_URL = 'https://github.com/fbwiqb/saengbu-helper';
+
+async function openExternal(url) {
+  try {
+    const r = await fetch('/api/open-external', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) });
+    const d = await r.json().catch(() => ({}));
+    return r.ok && d.ok;
+  } catch (_) { return false; }
+}
+
+function openIssue(kind) {
+  let label, title, body;
+  if (kind === 'bug') { label = 'bug'; title = '[버그] '; body = '## 무엇이 잘못됐나요?\n\n## 재현 방법\n1. \n2. \n\n## 기대한 동작\n\n## 환경\n- 앱 버전: \n- Windows\n'; }
+  else { label = 'enhancement'; title = '[제안] '; body = '## 어떤 기능이 있으면 좋을까요?\n\n## 왜 필요한가요?\n'; }
+  const url = `${REPO_URL}/issues/new?labels=${label}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  openExternal(url).then((ok) => {
+    $('#fbMsg').textContent = ok ? '✓ GitHub 이슈 페이지를 열었습니다' : '데스크톱 앱에서만 열 수 있어요';
+    setTimeout(() => { $('#fbMsg').textContent = ''; }, 3000);
+  });
+}
+
 function showUpd(msg, percent, ready) {
   $('#updBanner').hidden = false;
   $('#updMsg').textContent = msg;
   $('#updTrack').hidden = ready || percent == null;
   if (percent != null) $('#updFill').style.width = Math.min(100, percent) + '%';
   $('#updRestart').hidden = !ready;
+  $('#updNotes').hidden = false;
 }
 
 function initUpdater() {
   if (!window.updater) return;
   $('#updRestart').onclick = () => window.updater.restart();
+  $('#updNotes').onclick = () => openExternal(REPO_URL + '/releases');
   $('#updClose').onclick = () => { $('#updBanner').hidden = true; };
   window.updater.onAvailable((d) => showUpd(`새 버전 ${d.version || ''} 발견 — 다운로드 준비 중…`, 0, false));
   window.updater.onProgress((d) => showUpd(`업데이트 다운로드 중… ${Math.round(d.percent || 0)}%`, d.percent || 0, false));
