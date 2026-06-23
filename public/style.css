@@ -435,6 +435,9 @@ mark.hl.spell-fixed { background: var(--green-bg); color: var(--green); box-shad
 .help-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 22px 16px; border-top: 1px solid var(--line); }
 .help-nav .btn-primary, .help-nav .btn-ghost { padding: 8px 18px; font-size: 14px; }
 .help-dots { display: flex; gap: 8px; }
+.help-navbtns { display: flex; gap: 8px; }
+.help-hide { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); cursor: pointer; user-select: none; }
+.help-hide input { cursor: pointer; }
 .help-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); cursor: pointer; transition: background .15s; }
 .help-dot.on { background: var(--accent); }
 .prompt-box { width: min(420px, 100%); }

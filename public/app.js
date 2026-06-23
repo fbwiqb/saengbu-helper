@@ -123,6 +123,7 @@ async function boot() {
   $('#histModal').onclick = (e) => { if (e.target === $('#histModal')) closeHistory(); };
   $('#helpBtn').onclick = openHelp;
   $('#helpClose').onclick = closeHelp;
+  $('#helpHide').onchange = (e) => { try { if (e.target.checked) localStorage.setItem('saengbu_help_hidden', '1'); else localStorage.removeItem('saengbu_help_hidden'); } catch (_) {} };
   $('#helpPrev').onclick = () => helpNav(-1);
   $('#helpNext').onclick = () => helpNav(1);
   $('#helpModal').onclick = (e) => { if (e.target === $('#helpModal')) closeHelp(); };
@@ -154,7 +155,7 @@ async function boot() {
   document.addEventListener('keydown', onKey);
   window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
   initUpdater();
-  try { if (!localStorage.getItem('saengbu_onboarded')) { openHelp(); localStorage.setItem('saengbu_onboarded', '1'); } } catch (e) { /* ignore */ }
+  try { if (!localStorage.getItem('saengbu_help_hidden') && !localStorage.getItem('saengbu_onboarded')) { openHelp(); localStorage.setItem('saengbu_onboarded', '1'); } } catch (e) { /* ignore */ }
   if (!state.groupsList.length) { setView('settings'); return; }
   if (state.group) state.expanded.add(state.group);
   await loadList();
@@ -804,7 +805,7 @@ function helpNav(d) {
   renderHelp();
 }
 
-function openHelp() { state.helpPage = 0; renderHelp(); $('#helpModal').hidden = false; }
+function openHelp() { state.helpPage = 0; renderHelp(); const hh = $('#helpHide'); if (hh) { try { hh.checked = !!localStorage.getItem('saengbu_help_hidden'); } catch (_) {} } $('#helpModal').hidden = false; }
 function closeHelp() { $('#helpModal').hidden = true; }
 
 function askText(label, def) {
