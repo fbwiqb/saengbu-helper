@@ -141,12 +141,13 @@ async function boot() {
   $('#tmplLink').onclick = downloadTemplate;
   $('#openFolderBtn').onclick = openDataFolder;
   $('#resetDataBtn').onclick = resetData;
-  $('#bugBtn').onclick = () => openIssue('bug');
-  $('#featBtn').onclick = () => openIssue('feat');
+  $('#fbBug').onclick = () => openFb('bug');
+  $('#fbFeat').onclick = () => openFb('feat');
+  $('#fbClose').onclick = closeFb;
+  $('#fbCancel').onclick = closeFb;
+  $('#fbSend').onclick = submitFb;
   $('#phraseAdd').onclick = phraseAdd;
   $('#phraseSave').onclick = phraseSave;
-  $('#phraseBtn').onclick = togglePhraseMenu;
-  document.addEventListener('click', (e) => { if (!e.target.closest('.phrase-wrap')) { const m = $('#phraseMenu'); if (m) m.hidden = true; } });
   $('#bakExportBtn').onclick = exportBackup;
   $('#bakImportBtn').onclick = importBackup;
   const dz = $('#dropzone');
@@ -394,6 +395,7 @@ function selectArea(area) {
   state.spellErrors = []; state.spellHlIdx = null; state.spellBaseText = ''; state.spellUndo = null;
   showEdit();
   renderAssist();
+  renderPhraseButtons();
   $('#spellPanel').innerHTML = '<div class="empty">‘맞춤법’ 버튼을 눌러 점검</div>';
   state.dirty = false;
   renderTree();
@@ -862,15 +864,45 @@ async function openExternal(url) {
   } catch (_) { return false; }
 }
 
-function openIssue(kind) {
-  let label, title, body;
-  if (kind === 'bug') { label = 'bug'; title = '[버그] '; body = '## 무엇이 잘못됐나요?\n\n## 재현 방법\n1. \n2. \n\n## 기대한 동작\n\n## 환경\n- 앱 버전: \n- Windows\n'; }
-  else { label = 'enhancement'; title = '[제안] '; body = '## 어떤 기능이 있으면 좋을까요?\n\n## 왜 필요한가요?\n'; }
+const FEEDBACK_API = 'https://saengbu-helper.vercel.app/api/feedback';
+
+function openFb(kind) {
+  state.fbKind = kind;
+  $('#fbModalTitle').textContent = kind === 'feat' ? '기능 제안' : '버그 신고';
+  $('#fbSubject').value = '';
+  $('#fbDesc').value = '';
+  $('#fbModal').hidden = false;
+  setTimeout(() => $('#fbSubject').focus(), 0);
+}
+function closeFb() { $('#fbModal').hidden = true; }
+
+async function submitFb() {
+  const kind = state.fbKind === 'feat' ? 'feat' : 'bug';
+  const subject = $('#fbSubject').value.trim();
+  const desc = $('#fbDesc').value.trim();
+  if (!subject) { showToast('제목을 입력하세요'); return; }
+  const label = kind === 'feat' ? 'enhancement' : 'bug';
+  const title = (kind === 'feat' ? '[제안] ' : '[버그] ') + subject;
+  const body = desc || '(내용 없음)';
+  $('#fbSend').disabled = true;
+  let ok = false;
+  try {
+    const r = await fetch(FEEDBACK_API, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, title, body }) });
+    const d = await r.json().catch(() => ({}));
+    ok = r.ok && d.ok;
+  } catch (_) { ok = false; }
+  $('#fbSend').disabled = false;
+  if (ok) {
+    closeFb();
+    $('#fbMsg').textContent = '✓ 보냈습니다. 감사합니다!';
+    setTimeout(() => { $('#fbMsg').textContent = ''; }, 4000);
+    return;
+  }
   const url = `${REPO_URL}/issues/new?labels=${label}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-  openExternal(url).then((ok) => {
-    $('#fbMsg').textContent = ok ? '✓ GitHub 이슈 페이지를 열었습니다' : '데스크톱 앱에서만 열 수 있어요';
-    setTimeout(() => { $('#fbMsg').textContent = ''; }, 3000);
-  });
+  const opened = await openExternal(url);
+  closeFb();
+  $('#fbMsg').textContent = opened ? '✓ GitHub 작성 페이지를 열었습니다 — ‘제출’만 누르면 됩니다' : '전송 실패 — 인터넷 연결을 확인하세요';
+  setTimeout(() => { $('#fbMsg').textContent = ''; }, 5000);
 }
 
 function showUpd(msg, percent, ready) {
@@ -983,6 +1015,10 @@ function onKey(e) {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && (e.key === 's' || e.key === 'S')) { e.preventDefault(); if (state.hakbun) saveRecord(); }
   else if (mod && e.key === 'ArrowRight') { e.preventDefault(); if (state.hakbun) gotoNextUnwritten(); }
+  else if (mod && /^[1-9]$/.test(e.key) && state.view === 'student' && state.hakbun && state.area && !$('#body').hidden) {
+    const p = applicablePhrases()[Number(e.key) - 1];
+    if (p) { e.preventDefault(); insertCommonPhrase(p.text); }
+  }
 }
 
 async function renderDash() {
@@ -1157,17 +1193,15 @@ function applicablePhrases() {
   return (state.phrases || []).filter((p) => (p.text || '').trim() && (!p.group_tag || p.group_tag === g));
 }
 
-function togglePhraseMenu() {
-  const menu = $('#phraseMenu');
-  if (!menu) return;
-  if (!menu.hidden) { menu.hidden = true; return; }
+function renderPhraseButtons() {
+  const el = $('#phraseBtns');
+  if (!el) return;
   const list = applicablePhrases();
-  if (!list.length) { showToast('이 그룹에 등록된 공통문구가 없습니다 (설정 ▸ 공통문구)'); return; }
-  menu.innerHTML = list.map((p) => `<button class="ph-item" type="button" data-id="${esc(p.id)}"><span class="ph-it-t">${esc(p.title || p.text.slice(0, 24))}</span>${p.group_tag ? '' : '<span class="ph-all">전체</span>'}</button>`).join('');
-  menu.querySelectorAll('.ph-item').forEach((b) => {
-    b.onclick = () => { const p = list.find((x) => x.id === b.dataset.id); if (p) insertCommonPhrase(p.text); menu.hidden = true; };
-  });
-  menu.hidden = false;
+  el.innerHTML = list.map((p, i) => {
+    const kbd = i < 9 ? `<span class="kbd">⌃${i + 1}</span>` : '';
+    return `<button class="ph-quick btn-ghost" type="button" data-id="${esc(p.id)}" title="${esc(p.text)}">${esc(p.title || p.text.slice(0, 16))}${kbd}</button>`;
+  }).join('');
+  el.querySelectorAll('.ph-quick').forEach((b) => { b.onclick = () => { const p = list.find((x) => x.id === b.dataset.id); if (p) insertCommonPhrase(p.text); }; });
 }
 
 function insertCommonPhrase(text) {

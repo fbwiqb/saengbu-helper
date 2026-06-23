@@ -73,6 +73,7 @@
         <button class="settab" data-t="manage" type="button">등록 현황·관리</button>
         <button class="settab" data-t="phrases" type="button">공통문구</button>
         <button class="settab" data-t="backup" type="button">데이터·백업</button>
+        <button class="settab" data-t="feedback" type="button">피드백</button>
       </div>
       <div class="setpane" data-pane="areas">
       <h2>분류별 영역·바이트 설정</h2>
@@ -162,11 +163,14 @@
         </div>
         <span id="bakMsg" class="muted"></span>
       </div>
+      </div>
+      <div class="setpane" data-pane="feedback" hidden>
+      <h2>피드백</h2>
+      <p class="muted">버그나 개선 아이디어를 보내 주세요. 개발자(신도경)에게 전달됩니다. ⚠️ <b>학생 이름·생기부 내용 등 개인정보는 적지 마세요.</b></p>
       <div class="card">
-        <div class="bak-h">피드백 <span class="muted">— 버그나 개선 아이디어를 GitHub에 남겨 주세요 (브라우저가 열립니다)</span></div>
         <div class="row">
-          <button id="bugBtn" class="btn-ghost" type="button">🐞 버그 신고</button>
-          <button id="featBtn" class="btn-ghost" type="button">💡 기능 제안</button>
+          <button id="fbBug" class="btn-primary" type="button">🐞 버그 신고</button>
+          <button id="fbFeat" class="btn-ghost" type="button">💡 기능 제안</button>
           <span id="fbMsg" class="muted"></span>
         </div>
       </div>
@@ -187,10 +191,7 @@
             <div class="track"><div id="gaugeFill"></div></div>
           </div>
           <div class="editbar">
-            <div class="phrase-wrap">
-              <button id="phraseBtn" class="btn-ghost" type="button" title="등록한 공통문구를 골라 커서 위치에 삽입">공통문구 ▾</button>
-              <div id="phraseMenu" class="phrase-menu" hidden></div>
-            </div>
+            <span id="phraseBtns" class="phrase-btns"></span>
             <button id="sentToggle" class="btn-ghost">문장별 보기</button>
             <button id="dejoinBtn" class="btn-ghost" title="문장 중간 줄바꿈과 이중 공백을 한 번에 정리">줄바꿈·공백 정리</button>
           </div>
@@ -238,6 +239,24 @@
         <span class="help-navbtns">
           <button id="helpPrev" class="btn-ghost" type="button">◀ 이전</button>
           <button id="helpNext" class="btn-primary" type="button">다음 ▶</button>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div id="fbModal" class="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-head"><h3 id="fbModalTitle">버그 신고</h3><button id="fbClose" class="btn-ghost" type="button">닫기</button></div>
+      <div class="fb-body">
+        <input id="fbSubject" type="text" placeholder="제목 (한 줄 요약)" />
+        <textarea id="fbDesc" rows="6" placeholder="자세한 내용 — 어떤 상황에서 무엇이 / 어떤 기능이 왜 필요한지"></textarea>
+        <p class="muted">⚠️ 학생 이름·생기부 내용 등 개인정보는 적지 마세요.</p>
+      </div>
+      <div class="help-nav">
+        <span></span>
+        <span class="prompt-btns">
+          <button id="fbCancel" class="btn-ghost" type="button">취소</button>
+          <button id="fbSend" class="btn-primary" type="button">보내기</button>
         </span>
       </div>
     </div>

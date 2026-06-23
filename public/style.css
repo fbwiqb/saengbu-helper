@@ -246,15 +246,14 @@ button:active { transform: translateY(1px); }
 .btn-ghost.danger:hover { background: #fbece8; border-color: var(--red, #bf4630); color: var(--red, #bf4630); }
 
 /* common phrases */
-.phrase-wrap { position: relative; display: inline-block; }
-.phrase-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 220px; max-width: 360px;
-  max-height: 300px; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
-  box-shadow: 0 12px 30px rgba(40,32,20,.18); padding: 6px; }
-.ph-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0;
-  padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13.5px; color: var(--ink); }
-.ph-item:hover { background: var(--accent-soft); }
-.ph-item .ph-it-t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ph-item .ph-all, .phrase-row .ph-all { font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 7px; border-radius: 999px; }
+.phrase-btns { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.ph-quick { display: inline-flex; align-items: center; gap: 6px; max-width: 240px; }
+.ph-quick .kbd { font-size: 10.5px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft);
+  border: 1px solid #cfe4dc; border-radius: 5px; padding: 0 5px; line-height: 1.5; }
+.phrase-row .ph-all { font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 7px; border-radius: 999px; }
+.fb-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 2px 2px; }
+.fb-body input, .fb-body textarea { width: 100%; font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); resize: vertical; }
+.fb-body p { margin: 0; }
 .phrase-row { margin-bottom: 12px; }
 .phrase-row .ph-group { min-width: 150px; }
 .phrase-row .ph-title { flex: 1; min-width: 160px; }
