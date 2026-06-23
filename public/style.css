@@ -288,11 +288,14 @@ button:active { transform: translateY(1px); }
 .st-검증 { color: var(--amber); }
 .st-완료 { color: var(--green); }
 .cell-copy {
-  display: inline-block; margin-top: 5px; padding: 2px 8px; font-size: 11px; font-weight: 600;
-  border-radius: 6px; border: 1px solid var(--line); background: var(--surface);
-  color: var(--accent-ink); cursor: pointer; transition: background .12s, border-color .12s;
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 6px 14px;
+  font-size: 13px; font-weight: 800; border-radius: 8px; border: 1px solid var(--accent);
+  background: var(--accent); color: #fbf7ef; cursor: pointer;
+  box-shadow: 0 2px 6px rgba(47,107,79,.28); transition: filter .12s, transform .08s, box-shadow .12s;
 }
-.cell-copy:hover { background: var(--accent-soft); border-color: var(--accent); }
+.cell-copy::before { content: "📋"; font-size: 12px; }
+.cell-copy:hover { filter: brightness(1.07); box-shadow: 0 4px 10px rgba(47,107,79,.34); }
+.cell-copy:active { transform: translateY(1px); }
 #dashTable td.cell { vertical-align: top; }
 #dashTable td.copycol { text-align: center; padding: 6px 8px; }
 .row-copy {

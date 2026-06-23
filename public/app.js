@@ -1062,7 +1062,17 @@ function renderManage() {
     }
   }
   $('#managePanel').innerHTML = html;
-  $('#managePanel').querySelectorAll('.mg-byte').forEach((sel) => { sel.onchange = () => setGroupByteUI(sel.dataset.g, sel.value); });
+  $('#managePanel').querySelectorAll('.mg-byte').forEach((sel) => {
+    sel.onchange = () => {
+      const inp = sel.parentNode.querySelector('.mg-byte-custom');
+      if (sel.value === 'custom') { if (inp) { inp.hidden = false; inp.focus(); } return; }
+      if (inp) inp.hidden = true;
+      setGroupByteUI(sel.dataset.g, sel.value);
+    };
+  });
+  $('#managePanel').querySelectorAll('.mg-byte-custom').forEach((inp) => {
+    inp.onchange = () => { if (inp.value && Number(inp.value) > 0) setGroupByteUI(inp.dataset.g, inp.value); };
+  });
   $('#managePanel').querySelectorAll('.mg-caret').forEach((b) => { b.onclick = () => toggleMg(b.dataset.g); });
   $('#managePanel').querySelectorAll('.mg-rename').forEach((b) => { b.onclick = () => renameGroupUI(b.dataset.g); });
   $('#managePanel').querySelectorAll('.mg-del').forEach((b) => { b.onclick = () => deleteGroupUI(b.dataset.g); });
@@ -1074,10 +1084,11 @@ function renderManage() {
 function groupByteControl(g) {
   if (!PER_SUBJECT.has(g.category)) return '';
   const cur = Number(g.byte_limit) || '';
+  const custom = cur !== '' && !BYTE_PRESETS.includes(cur);
   const presets = BYTE_PRESETS.map((p) => `<option value="${p}" ${cur === p ? 'selected' : ''}>${p}B</option>`).join('');
   return `<select class="mg-byte" data-g="${esc(g.group_tag)}" title="이 그룹만 다른 바이트 한도 (예: 1학년 세특 750)">
-      <option value="" ${!cur ? 'selected' : ''}>설정값</option>${presets}
-    </select>`;
+      <option value="" ${!cur ? 'selected' : ''}>설정값</option>${presets}<option value="custom" ${custom ? 'selected' : ''}>직접입력</option>
+    </select><input class="mg-byte-custom" data-g="${esc(g.group_tag)}" type="number" min="1" placeholder="바이트" value="${esc(custom ? cur : '')}" ${custom ? '' : 'hidden'} />`;
 }
 
 async function setGroupByteUI(tag, val) {
