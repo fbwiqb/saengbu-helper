@@ -483,9 +483,12 @@ function highlightTerm(term, markClass) {
   const text = $('#body').value;
   const html = esc(text).split(esc(term)).join(`<mark class="${mc}">${esc(term)}</mark>`);
   const count = text.split(term).length - 1;
-  $('#sentView').innerHTML = `<div class="hl-head">‘<b>${esc(term)}</b>’ ${count}곳 강조 — 편집하려면 ‘편집으로’</div><div class="hlview">${html}</div>`;
+  const toSent = mc === 'hl' ? ' <button class="hl-tosent" type="button">문장별 보기 ▸</button>' : '';
+  $('#sentView').innerHTML = `<div class="hl-head">‘<b>${esc(term)}</b>’ ${count}곳 강조 — 편집하려면 ‘편집으로’${toSent}</div><div class="hlview">${html}</div>`;
   $('#body').hidden = true; $('#sentView').hidden = false;
   $('#sentToggle').classList.add('sel'); $('#sentToggle').textContent = '편집으로';
+  const ts = $('#sentView').querySelector('.hl-tosent');
+  if (ts) ts.onclick = () => { state.sentMode = true; state.hlMode = false; renderSentences($('#body').value); };
 }
 
 function renderFreq(text) {
