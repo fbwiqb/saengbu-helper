@@ -864,7 +864,7 @@ async function openExternal(url) {
   } catch (_) { return false; }
 }
 
-const FEEDBACK_API = 'https://saengbu-helper.vercel.app/api/feedback';
+const FB_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSfvCo7-_lilsWis303e78qu13EXs8AWONU8fuZMhmdEzCDGvQ/formResponse';
 
 function openFb(kind) {
   state.fbKind = kind;
@@ -881,28 +881,21 @@ async function submitFb() {
   const subject = $('#fbSubject').value.trim();
   const desc = $('#fbDesc').value.trim();
   if (!subject) { showToast('제목을 입력하세요'); return; }
-  const label = kind === 'feat' ? 'enhancement' : 'bug';
-  const title = (kind === 'feat' ? '[제안] ' : '[버그] ') + subject;
-  const body = desc || '(내용 없음)';
+  const fd = new URLSearchParams();
+  fd.append('entry.1273396153', kind === 'feat' ? '기능 제안' : '버그');
+  fd.append('entry.744183066', subject);
+  fd.append('entry.1624751901', desc || '(내용 없음)');
+  fd.append('fvv', '1'); fd.append('pageHistory', '0'); fd.append('submissionTimestamp', '-1');
   $('#fbSend').disabled = true;
-  let ok = false;
   try {
-    const r = await fetch(FEEDBACK_API, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, title, body }) });
-    const d = await r.json().catch(() => ({}));
-    ok = r.ok && d.ok;
-  } catch (_) { ok = false; }
-  $('#fbSend').disabled = false;
-  if (ok) {
+    await fetch(FB_FORM, { method: 'POST', mode: 'no-cors', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: fd.toString() });
     closeFb();
     $('#fbMsg').textContent = '✓ 보냈습니다. 감사합니다!';
-    setTimeout(() => { $('#fbMsg').textContent = ''; }, 4000);
-    return;
+  } catch (e) {
+    $('#fbMsg').textContent = '전송 실패 — 인터넷 연결을 확인하세요';
   }
-  const url = `${REPO_URL}/issues/new?labels=${label}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-  const opened = await openExternal(url);
-  closeFb();
-  $('#fbMsg').textContent = opened ? '✓ GitHub 작성 페이지를 열었습니다 — ‘제출’만 누르면 됩니다' : '전송 실패 — 인터넷 연결을 확인하세요';
-  setTimeout(() => { $('#fbMsg').textContent = ''; }, 5000);
+  $('#fbSend').disabled = false;
+  setTimeout(() => { $('#fbMsg').textContent = ''; }, 4000);
 }
 
 function showUpd(msg, percent, ready) {
@@ -1198,7 +1191,7 @@ function renderPhraseButtons() {
   if (!el) return;
   const list = applicablePhrases();
   el.innerHTML = list.map((p, i) => {
-    const kbd = i < 9 ? `<span class="kbd">⌃${i + 1}</span>` : '';
+    const kbd = i < 9 ? `<span class="kbd">Ctrl+${i + 1}</span>` : '';
     return `<button class="ph-quick btn-ghost" type="button" data-id="${esc(p.id)}" title="${esc(p.text)}">${esc(p.title || p.text.slice(0, 16))}${kbd}</button>`;
   }).join('');
   el.querySelectorAll('.ph-quick').forEach((b) => { b.onclick = () => { const p = list.find((x) => x.id === b.dataset.id); if (p) insertCommonPhrase(p.text); }; });

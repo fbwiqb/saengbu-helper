@@ -385,7 +385,8 @@ mark.hl { background: #fff07a; color: inherit; border-radius: 3px; padding: 0 1p
 .warn-item.warn { color: var(--amber); }
 
 /* ===== Edit toolbar + sentence view ===== */
-.editbar { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 8px; }
+.editbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.editbar #sentToggle { margin-left: auto; }
 .editbar .sel { background: var(--accent); color: #fbf7ef; border-color: var(--accent); }
 .hl-head .hl-clear, .hl-head .hl-tosent { font-size: 11.5px; padding: 1px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer; }
 .hl-head .hl-clear:hover, .hl-head .hl-tosent:hover { border-color: var(--accent); color: var(--accent-ink); }
