@@ -1067,6 +1067,8 @@ function renderManage() {
   $('#managePanel').querySelectorAll('.mg-rename').forEach((b) => { b.onclick = () => renameGroupUI(b.dataset.g); });
   $('#managePanel').querySelectorAll('.mg-del').forEach((b) => { b.onclick = () => deleteGroupUI(b.dataset.g); });
   $('#managePanel').querySelectorAll('.mg-remove').forEach((b) => { b.onclick = () => removeMemberUI(b.dataset.h, b.dataset.g); });
+  $('#managePanel').querySelectorAll('.mg-srename').forEach((b) => { b.onclick = () => renameStudentMg(b.dataset.h, b.dataset.g, b.dataset.n); });
+  $('#managePanel').querySelectorAll('.mg-add').forEach((b) => { b.onclick = () => addStudentMg(b.dataset.g); });
 }
 
 function groupByteControl(g) {
@@ -1090,8 +1092,28 @@ async function setGroupByteUI(tag, val) {
 function renderMgStudents(tag) {
   const list = state.studsByGroup[tag];
   if (!list) return '<div class="muted">불러오는 중…</div>';
-  if (!list.length) return '<div class="muted">학생 없음</div>';
-  return list.map((s) => `<div class="mg-stu"><span>${esc(s.hakbun)} ${esc(s.name)}</span><button class="mg-remove btn-ghost" data-h="${esc(s.hakbun)}" data-g="${esc(tag)}">빼기</button></div>`).join('');
+  const rows = list.length
+    ? list.map((s) => `<div class="mg-stu"><span class="mg-stu-name">${esc(s.hakbun)} ${esc(s.name)}</span><span class="mg-stu-btns"><button class="mg-srename btn-ghost" data-h="${esc(s.hakbun)}" data-g="${esc(tag)}" data-n="${esc(s.name || '')}">이름변경</button><button class="mg-remove btn-ghost" data-h="${esc(s.hakbun)}" data-g="${esc(tag)}">빼기</button></span></div>`).join('')
+    : '<div class="muted">학생 없음</div>';
+  return rows + `<div class="mg-addstu"><button class="mg-add btn-ghost" data-g="${esc(tag)}">+ 학생 추가</button></div>`;
+}
+
+async function addStudentMg(tag) {
+  const hakbun = ((await askText('추가할 학생의 학번 — ' + tag, '')) || '').trim(); if (!hakbun) return;
+  const name = ((await askText('학생 이름', '')) || '').trim();
+  await j('/api/students', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ hakbun, name, group_tag: tag }) });
+  delete state.studsByGroup[tag]; await loadGroup(tag);
+  await refreshGroups(); renderManage(); await loadList();
+  showToast('✓ 학생 추가됨');
+}
+
+async function renameStudentMg(hakbun, tag, cur) {
+  const nn = ((await askText('학생 이름 변경 (' + hakbun + ')', cur)) || '').trim();
+  if (!nn || nn === cur) return;
+  await j('/api/students/' + encodeURIComponent(hakbun), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: nn }) });
+  delete state.studsByGroup[tag]; await loadGroup(tag);
+  renderManage(); await loadList();
+  showToast('✓ 이름 변경됨');
 }
 
 async function toggleMg(tag) {
