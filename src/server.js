@@ -40,6 +40,14 @@ function createApp(db) {
     }
   });
 
+  app.post('/api/reset', (req, res) => {
+    try {
+      if ((req.body || {}).confirm !== '삭제') return res.status(400).json({ error: "확인 문구('삭제')가 일치하지 않습니다" });
+      db.exec('DELETE FROM records; DELETE FROM students; DELETE FROM memberships; DELETE FROM groups; DELETE FROM legacy; DELETE FROM books; DELETE FROM edits_log; DELETE FROM exemplars_added;');
+      res.json({ ok: true });
+    } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+  });
+
   app.get('/api/forbidden', (_req, res) => res.json(FORBIDDEN));
   app.get('/api/byte-targets', (_req, res) => res.json(TARGETS));
 

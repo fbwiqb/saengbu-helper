@@ -242,6 +242,8 @@ button:active { transform: translateY(1px); }
 .btn-green:hover { background: #d0e9d7; }
 .btn-ghost { background: var(--surface); color: var(--ink-soft); border-color: var(--line); }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent-ink); }
+.btn-ghost.danger { color: var(--red, #bf4630); border-color: #e6c4bc; }
+.btn-ghost.danger:hover { background: #fbece8; border-color: var(--red, #bf4630); color: var(--red, #bf4630); }
 #addBtn { background: var(--accent-soft); color: var(--accent-ink); border-color: #cfe4dc; padding: 8px 12px; }
 #addBtn:hover { background: #d7eae3; }
 

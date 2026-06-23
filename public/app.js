@@ -138,6 +138,7 @@ async function boot() {
   document.querySelectorAll('.settab').forEach((b) => { b.onclick = () => selectSetPane(b.dataset.t); });
   $('#tmplLink').onclick = downloadTemplate;
   $('#openFolderBtn').onclick = openDataFolder;
+  $('#resetDataBtn').onclick = resetData;
   $('#bakExportBtn').onclick = exportBackup;
   $('#bakImportBtn').onclick = importBackup;
   const dz = $('#dropzone');
@@ -886,6 +887,21 @@ async function openDataFolder() {
     $('#folderMsg').textContent = '열기 실패';
   }
   setTimeout(() => { $('#folderMsg').textContent = ''; }, 3000);
+}
+
+async function resetData() {
+  const v = await askText('⚠️ 등록 명단·그룹·모든 생기부 기록이 삭제됩니다. 되돌릴 수 없습니다. 계속하려면 삭제 라고 입력하세요.', '');
+  if (v == null) return;
+  if (v.trim() !== '삭제') { showToast('취소됨 — 확인 문구가 일치하지 않습니다'); return; }
+  try {
+    const r = await fetch('/api/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: '삭제' }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(d.error || '삭제 실패'); return; }
+    showToast('✓ 모든 생기부 데이터가 삭제되었습니다');
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    showToast('삭제 실패 — 연결을 확인하세요');
+  }
 }
 
 async function saveRecord(silent) {
