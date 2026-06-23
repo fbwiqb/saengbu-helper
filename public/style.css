@@ -426,6 +426,11 @@ mark.hl.spell-fixed { background: var(--green-bg); color: var(--green); box-shad
 .help-dots { display: flex; gap: 8px; }
 .help-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); cursor: pointer; transition: background .15s; }
 .help-dot.on { background: var(--accent); }
+.prompt-box { width: min(420px, 100%); }
+.prompt-body { padding: 18px 20px; }
+.prompt-body #promptInput { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; font-size: 14.5px; outline: none; }
+.prompt-body #promptInput:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.prompt-btns { display: flex; gap: 8px; }
 .hist-body { padding: 8px 18px 18px; overflow-y: auto; }
 .ver-item { padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
 .ver-item:last-child { border-bottom: none; }

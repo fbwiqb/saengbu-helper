@@ -325,8 +325,8 @@ function updateEmptyState() {
 async function addStudent(group) {
   const g = group || state.group;
   if (!g) return;
-  const hakbun = prompt('학번?'); if (!hakbun) return;
-  const name = prompt('이름?') || '';
+  const hakbun = ((await askText('추가할 학생의 학번', '')) || '').trim(); if (!hakbun) return;
+  const name = ((await askText('학생 이름', '')) || '').trim();
   await j('/api/students', { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ hakbun, name, group_tag: g }) });
   state.group = g;
@@ -799,6 +799,21 @@ function helpNav(d) {
 function openHelp() { state.helpPage = 0; renderHelp(); $('#helpModal').hidden = false; }
 function closeHelp() { $('#helpModal').hidden = true; }
 
+function askText(label, def) {
+  return new Promise((resolve) => {
+    $('#promptTitle').textContent = label;
+    const inp = $('#promptInput');
+    inp.value = def || '';
+    $('#promptModal').hidden = false;
+    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+    const cleanup = () => { $('#promptOk').onclick = null; $('#promptCancel').onclick = null; inp.onkeydown = null; };
+    const done = (v) => { $('#promptModal').hidden = true; cleanup(); resolve(v); };
+    $('#promptOk').onclick = () => done(inp.value);
+    $('#promptCancel').onclick = () => done(null);
+    inp.onkeydown = (e) => { if (e.key === 'Enter') done(inp.value); else if (e.key === 'Escape') done(null); };
+  });
+}
+
 function showUpd(msg, percent, ready) {
   $('#updBanner').hidden = false;
   $('#updMsg').textContent = msg;
@@ -1087,8 +1102,8 @@ async function toggleMg(tag) {
 }
 
 async function renameGroupUI(tag) {
-  const nn = prompt('새 그룹명', tag);
-  if (!nn || nn.trim() === tag) return;
+  const nn = await askText('새 그룹명', tag);
+  if (!nn || !nn.trim() || nn.trim() === tag) return;
   const r = await fetch(`/api/groups/${encodeURIComponent(tag)}/rename`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ newTag: nn.trim() }) });
   const d = await r.json();
   if (!r.ok) { showToast(d.error || '변경 실패'); return; }
