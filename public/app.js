@@ -922,32 +922,64 @@ async function renderDash() {
     `<div class="progbar"><div class="fill" style="width:${d.completion}%"></div></div>
      <div class="summary">완료율 <b>${d.completion}%</b> · 완료 <b>${d.summary['완료']}</b> · 검증 <b>${d.summary['검증']}</b> · 초안 <b>${d.summary['초안']}</b> · 미작성 <b>${d.summary['미작성']}</b></div>`;
   const filter = $('#dashFilter').value;
+  let areaSel = state.dashArea || '';
+  if (areaSel && !d.areas.includes(areaSel)) areaSel = '';
+  state.dashArea = areaSel;
   dashBodies = {};
+  for (const r of d.rows) for (const c of r.cells) {
+    if ((c.body || '').trim().length > 0) dashBodies[`${r.hakbun}|${c.area}|${c.subject || ''}`] = c.body;
+  }
   const fillCls = (c) => c.status === '미작성' && !c.bytes ? 'none' : (c.pct > 100 ? 'over' : c.pct >= 95 ? 'full' : c.pct < 70 ? 'low' : 'ok');
+
+  const areaEl = $('#dashAreas');
+  if (areaEl) {
+    areaEl.innerHTML = '<span class="dash-area-lab">영역별 복사</span>'
+      + ['', ...d.areas].map((a) => `<button class="dash-area-btn${areaSel === a ? ' sel' : ''}" data-area="${esc(a)}">${a === '' ? '전체(학생별)' : esc(a)}</button>`).join('');
+    areaEl.querySelectorAll('.dash-area-btn').forEach((b) => { b.onclick = () => { state.dashArea = b.dataset.area; renderDash(); }; });
+  }
+
+  const copyCell = (r, c) => {
+    const key = `${r.hakbun}|${c.area}|${c.subject || ''}`;
+    const hasText = (c.body || '').trim().length > 0;
+    const lim = c.limit || state.targets[c.area] || 0;
+    return hasText
+      ? `<button class="cell-copy" data-key="${esc(key)}" data-area="${esc(c.area)}" data-lim="${lim}" title="${esc(c.area)} 복사">복사</button>`
+      : '<span class="row-copy-empty">–</span>';
+  };
+  const writeCell = (r, c) => `<button class="gowrite" data-h="${esc(r.hakbun)}" data-g="${esc(state.group)}" data-a="${esc(c.area)}">쓰러 가기 ▶</button>`;
+  const barCell = (c) => `<td class="barcol"><div class="dbar"><div class="dfill" style="width:${Math.min(100, c.pct)}%"></div></div></td>`;
+  const byteCell = (c) => `<td class="abytes">${c.bytes} / ${c.limit || state.targets[c.area] || 0} B</td>`;
+
   const head = '<tr><th>복사</th><th>학번</th><th>이름</th><th>영역</th><th>진행</th><th>바이트</th><th>쓰기</th></tr>';
-  const rows = d.rows.map((r) => {
-    const n = r.cells.length;
-    return r.cells.map((c, i) => {
-      const key = `${r.hakbun}|${c.area}|${c.subject || ''}`;
-      const hasText = (c.body || '').trim().length > 0;
-      if (hasText) dashBodies[key] = c.body;
-      const lim = c.limit || state.targets[c.area] || 0;
+  let rows;
+  if (areaSel) {
+    rows = d.rows.map((r) => {
+      const c = r.cells.find((x) => x.area === areaSel);
+      if (!c) return '';
       const dim = filter && c.status !== filter ? ' dim' : '';
-      const copyBtn = hasText
-        ? `<button class="cell-copy" data-key="${esc(key)}" data-area="${esc(c.area)}" data-lim="${lim}" title="${esc(c.area)} 복사">복사</button>`
-        : '<span class="row-copy-empty">–</span>';
-      const writeBtn = `<button class="gowrite" data-h="${esc(r.hakbun)}" data-g="${esc(state.group)}" data-a="${esc(c.area)}">쓰러 가기 ▶</button>`;
-      const who = i === 0
-        ? `<td class="hakbun" rowspan="${n}">${esc(r.hakbun)}</td><td class="sname" rowspan="${n}">${esc(r.name)}</td>`
-        : '';
-      return `<tr class="arow-tr ${fillCls(c)}${dim}${i === 0 ? ' stu-first' : ''}">`
-        + `<td class="copycol">${copyBtn}</td>${who}`
+      return `<tr class="arow-tr ${fillCls(c)}${dim} stu-first">`
+        + `<td class="copycol">${copyCell(r, c)}</td>`
+        + `<td class="hakbun">${esc(r.hakbun)}</td><td class="sname">${esc(r.name)}</td>`
         + `<td class="alabel">${esc(c.area)}</td>`
-        + `<td class="barcol"><div class="dbar"><div class="dfill" style="width:${Math.min(100, c.pct)}%"></div></div></td>`
-        + `<td class="abytes">${c.bytes} / ${lim} B</td>`
-        + `<td class="writecol">${writeBtn}</td></tr>`;
+        + barCell(c) + byteCell(c)
+        + `<td class="writecol">${writeCell(r, c)}</td></tr>`;
     }).join('');
-  }).join('');
+  } else {
+    rows = d.rows.map((r) => {
+      const n = r.cells.length;
+      return r.cells.map((c, i) => {
+        const dim = filter && c.status !== filter ? ' dim' : '';
+        const who = i === 0
+          ? `<td class="hakbun" rowspan="${n}">${esc(r.hakbun)}</td><td class="sname" rowspan="${n}">${esc(r.name)}</td>`
+          : '';
+        return `<tr class="arow-tr ${fillCls(c)}${dim}${i === 0 ? ' stu-first' : ''}">`
+          + `<td class="copycol">${copyCell(r, c)}</td>${who}`
+          + `<td class="alabel">${esc(c.area)}</td>`
+          + barCell(c) + byteCell(c)
+          + `<td class="writecol">${writeCell(r, c)}</td></tr>`;
+      }).join('');
+    }).join('');
+  }
   $('#dashTable').innerHTML = `<table class="dash flat">${head}${rows}</table>`;
   $('#dashTable').querySelectorAll('.cell-copy').forEach((b) => {
     b.onclick = () => copyText(dashBodies[b.dataset.key], b.dataset.area, '', Number(b.dataset.lim) || null);

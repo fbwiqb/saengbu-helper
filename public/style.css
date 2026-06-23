@@ -273,6 +273,12 @@ button:active { transform: translateY(1px); }
 .progbar { height: 10px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin-bottom: 8px; }
 .progbar .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 99px; transition: width .4s; }
 .summary { color: var(--ink-soft); font-size: 13px; font-variant-numeric: tabular-nums; }
+.dash-areas { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }
+.dash-area-lab { color: var(--ink-soft); font-size: 13px; font-weight: 600; margin-right: 4px; }
+.dash-area-btn { padding: 6px 14px; font-size: 13px; font-weight: 700; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); transition: background .12s, color .12s, border-color .12s; }
+.dash-area-btn:hover { border-color: var(--accent); color: var(--accent-ink); }
+.dash-area-btn.sel { background: var(--accent); border-color: var(--accent); color: #fbf7ef; }
 .dashfilter { margin: 8px 0 14px; color: var(--ink-soft); font-size: 13px; display: flex; align-items: center; gap: 8px; }
 #dashTable table, #overlapEvents table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
 #dashTable th, #dashTable td, #overlapEvents th, #overlapEvents td {
