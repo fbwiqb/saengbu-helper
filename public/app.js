@@ -145,6 +145,7 @@ async function boot() {
   $('#fbFeat').onclick = () => openFb('feat');
   $('#fbClose').onclick = closeFb;
   $('#fbCancel').onclick = closeFb;
+  $('#fbModal').onclick = (e) => { if (e.target === $('#fbModal')) closeFb(); };
   $('#fbSend').onclick = submitFb;
   $('#phraseAdd').onclick = phraseAdd;
   $('#phraseSave').onclick = phraseSave;
@@ -161,7 +162,8 @@ async function boot() {
   $('#stuSearch').oninput = onSearch;
   $('#sortToggle').onclick = () => { state.sortUnwritten = !state.sortUnwritten; $('#sortToggle').textContent = state.sortUnwritten ? '미작성순' : '학번순'; renderTree(); };
   document.addEventListener('keydown', onKey);
-  window.addEventListener('beforeunload', (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
+  Object.defineProperty(window, '__appDirty', { get: () => !!state.dirty });
+  $('#quitBtn').onclick = () => window.close();
   initUpdater();
   try { if (!localStorage.getItem('saengbu_help_hidden') && !localStorage.getItem('saengbu_onboarded')) { openHelp(); localStorage.setItem('saengbu_onboarded', '1'); } } catch (e) { /* ignore */ }
   if (!state.groupsList.length) { setView('settings'); return; }

@@ -42,6 +42,20 @@ async function createWindow() {
     webPreferences: { contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, 'preload.js') },
   });
   mainWin = win;
+  let forceClose = false;
+  win.on('close', (e) => {
+    if (forceClose) return;
+    e.preventDefault();
+    win.webContents.executeJavaScript('window.__appDirty === true').catch(() => false).then((dirty) => {
+      if (dirty) {
+        const { dialog } = require('electron');
+        const res = dialog.showMessageBoxSync(win, { type: 'warning', noLink: true, buttons: ['종료', '취소'], defaultId: 1, cancelId: 1, title: '종료', message: '저장하지 않은 변경이 있습니다. 종료할까요?' });
+        if (res !== 0) return;
+      }
+      forceClose = true;
+      win.destroy();
+    });
+  });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
