@@ -65,6 +65,13 @@
     </section>
 
     <section id="settingsView" hidden>
+      <div class="settabs">
+        <button class="settab sel" data-t="areas" type="button">영역·바이트</button>
+        <button class="settab" data-t="upload" type="button">명단 업로드</button>
+        <button class="settab" data-t="manage" type="button">등록 현황·관리</button>
+        <button class="settab" data-t="backup" type="button">데이터·백업</button>
+      </div>
+      <div class="setpane" data-pane="areas">
       <h2>분류별 영역·바이트 설정</h2>
       <p class="muted">분류마다 작성할 영역을 체크하고 바이트 한도를 정하세요. 세특·동아리·기타는 과목/그룹명이 자동으로 붙습니다.</p>
       <div id="cfgCards"></div>
@@ -73,6 +80,8 @@
         <span id="cfgMsg" class="muted"></span>
       </div>
 
+      </div>
+      <div class="setpane" data-pane="upload" hidden>
       <h2>학생 템플릿 업로드</h2>
       <p class="muted">양식의 <b>시트(담임/세특/동아리/기타)</b>와 <b>열(과목명·동아리명·구분)</b>로 분류·그룹이 자동 결정됩니다. 한 파일에 여러 시트를 채우면 여러 그룹이 한 번에 등록됩니다.</p>
       <div class="upload-form card">
@@ -106,10 +115,14 @@
         <span id="upMsg" class="muted"></span>
       </div>
 
+      </div>
+      <div class="setpane" data-pane="manage" hidden>
       <h2>등록 현황 · 관리</h2>
       <p class="muted">등록된 그룹·학생을 보고 그룹명 변경·삭제, 학생 빼기를 할 수 있습니다. ⚠️ 삭제는 되돌릴 수 없습니다(데이터 폴더 백업 권장).</p>
       <div id="managePanel" class="card"></div>
 
+      </div>
+      <div class="setpane" data-pane="backup" hidden>
       <h2>데이터 / 백업</h2>
       <p class="muted">생기부 기록은 아래 폴더의 <b>saengbu.db</b> 파일에 저장됩니다. 다른 PC에서 이어서 작업하려면 <b>백업 내보내기</b>로 암호화 파일을 만들어 옮긴 뒤 <b>백업 불러오기</b>로 복원하세요.</p>
       <div class="card">
@@ -133,6 +146,7 @@
           </div>
         </div>
         <span id="bakMsg" class="muted"></span>
+      </div>
       </div>
     </section>
 

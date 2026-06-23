@@ -157,6 +157,10 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); box-sha
 }
 .badge.미작성 { background: var(--surface-2); color: var(--ink-faint); }
 .prog-chip { cursor: pointer; }
+.settabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 18px; flex-wrap: wrap; }
+.settab { padding: 9px 16px; border: none; background: none; color: var(--ink-soft); font-size: 14px; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.settab:hover { color: var(--accent-ink); }
+.settab.sel { color: var(--accent-ink); border-bottom-color: var(--accent); }
 .bak-sec { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .bak-h { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
 .bak-sec .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

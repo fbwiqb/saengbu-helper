@@ -68,7 +68,15 @@ async function fetchResults(text) {
 }
 
 function stripTags(s) {
-  return String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  return String(s || '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (m, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .replace(/['"‘’“”]/g, '')
+    .replace(/\s+/g, ' ').trim();
 }
 
 const STYLE_HELP_RE = /\[[^\]]*(?:신문|일보|뉴스|방송|투데이)[^\]]*\]|버릇|번역\s*투|외래어\s*영향|일본어\s*투|영어\s*투/;

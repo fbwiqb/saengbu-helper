@@ -133,6 +133,7 @@ async function boot() {
   $('#dashFilter').onchange = renderDash;
   $('#dashExport').onclick = exportDash;
   $('#cfgSave').onclick = saveConfig;
+  document.querySelectorAll('.settab').forEach((b) => { b.onclick = () => selectSetPane(b.dataset.t); });
   $('#tmplLink').onclick = downloadTemplate;
   $('#openFolderBtn').onclick = openDataFolder;
   $('#bakExportBtn').onclick = exportBackup;
@@ -898,6 +899,11 @@ function byteSelect(area, limit) {
     + `<option value="custom" ${!isPreset ? 'selected' : ''}>직접입력</option>`;
   return `<select class="cfg-byte" data-area="${esc(area)}">${opts}</select>`
     + `<input class="cfg-custom" data-area="${esc(area)}" type="number" min="1" value="${esc(limit)}" ${isPreset ? 'hidden' : ''} />`;
+}
+
+function selectSetPane(t) {
+  document.querySelectorAll('.settab').forEach((x) => x.classList.toggle('sel', x.dataset.t === t));
+  document.querySelectorAll('.setpane').forEach((p) => { p.hidden = p.dataset.pane !== t; });
 }
 
 function renderSettings() {
