@@ -1,6 +1,6 @@
 {
   "name": "saengbu-helper",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "type": "commonjs",
   "main": "main.js",

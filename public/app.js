@@ -123,6 +123,8 @@ async function boot() {
   $('#histModal').onclick = (e) => { if (e.target === $('#histModal')) closeHistory(); };
   $('#helpBtn').onclick = openHelp;
   $('#helpClose').onclick = closeHelp;
+  $('#helpPrev').onclick = () => helpNav(-1);
+  $('#helpNext').onclick = () => helpNav(1);
   $('#helpModal').onclick = (e) => { if (e.target === $('#helpModal')) closeHelp(); };
   $('#nextBtn').onclick = gotoNextUnwritten;
   $('#sentToggle').onclick = toggleSentMode;
@@ -424,14 +426,15 @@ function splitSentences(text) {
   return parts.map((s) => s.trim()).filter(Boolean);
 }
 
-function markTerm(s, term) {
-  return term ? esc(s).split(esc(term)).join(`<mark class="hl">${esc(term)}</mark>`) : esc(s);
+function markTerm(s, term, cls) {
+  return term ? esc(s).split(esc(term)).join(`<mark class="${cls || 'hl'}">${esc(term)}</mark>`) : esc(s);
 }
 
 function renderSentences(text) {
   const sents = splitSentences(text);
   if (!sents.length) { $('#sentView').innerHTML = '<div class="empty">본문이 비어 있음</div>'; return; }
   const term = state.hlTerm;
+  const cls = state.hlClass || 'hl';
   let head = '';
   if (term) {
     const count = text.split(term).length - 1;
@@ -441,12 +444,12 @@ function renderSentences(text) {
     const n = [...s].length;
     const long = n > 120;
     const veryLong = n > 160;
-    const cls = veryLong ? 'sent vlong' : long ? 'sent long' : 'sent';
-    return `<div class="${cls}"><span class="sno">${i + 1}</span><span class="stx">${markTerm(s, term)}</span><span class="slen">${n}자 · ${calcBytes(s)}B</span></div>`;
+    const scls = veryLong ? 'sent vlong' : long ? 'sent long' : 'sent';
+    return `<div class="${scls}"><span class="sno">${i + 1}</span><span class="stx">${markTerm(s, term, cls)}</span><span class="slen">${n}자 · ${calcBytes(s)}B</span></div>`;
   }).join('');
   $('#sentView').innerHTML = head + body;
   const clr = $('#sentView').querySelector('.hl-clear');
-  if (clr) clr.onclick = () => { state.hlTerm = null; renderSentences($('#body').value); };
+  if (clr) clr.onclick = () => { state.hlTerm = null; if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); } renderSentences($('#body').value); };
 }
 
 function showEdit() {
@@ -478,8 +481,8 @@ function dejoinBody() {
 function highlightTerm(term, markClass) {
   if (!term) return;
   const mc = markClass || 'hl';
-  if (state.sentMode && mc === 'hl') { state.hlTerm = term; renderSentences($('#body').value); return; }
-  state.hlMode = true; state.sentMode = false; state.hlTerm = term;
+  if (state.sentMode) { state.hlTerm = term; state.hlClass = mc; renderSentences($('#body').value); return; }
+  state.hlMode = true; state.sentMode = false; state.hlTerm = term; state.hlClass = mc;
   const text = $('#body').value;
   const html = esc(text).split(esc(term)).join(`<mark class="${mc}">${esc(term)}</mark>`);
   const count = text.split(term).length - 1;
@@ -728,7 +731,72 @@ async function restoreVersion(idx) {
 
 function closeHistory() { $('#histModal').hidden = true; }
 
-function openHelp() { $('#helpModal').hidden = false; }
+const HELP_PAGES = [
+  { t: '환영합니다 👋', h: `
+    <p class="help-lead">생기부 입력 도우미는 <b>학기별 생기부를 빠르게 입력하고 점검</b>하도록 돕는 프로그램이에요.</p>
+    <p>글은 선생님이 쓰고, <b>바이트 세기·맞춤법·반복 표현·진행 관리</b>처럼 번거로운 일은 프로그램이 맡습니다. NEIS에 붙여넣기 직전, 마지막 점검까지 도와드려요.</p>
+    <p class="help-note">🔒 모든 데이터는 <b>이 컴퓨터에만</b> 저장됩니다. 맞춤법 검사를 누를 때만 본문이 외부(부산대 검사기)로 전송돼요.</p>
+    <p class="help-tip">오른쪽 아래 <b>다음 ▶</b> 을 눌러 한 장씩 따라와 보세요.</p>` },
+  { t: '1단계 · 무엇을 쓸지 정하기 (설정)', h: `
+    <p>맨 위 <b>설정</b> 탭에서, 분류마다 작성할 영역과 글자 수(바이트) 한도를 정합니다.</p>
+    <ul>
+      <li><b>담임교사</b> — 자율·자치활동, 진로활동, 행동특성</li>
+      <li><b>교과 담당교사</b> — 세부능력및특기사항(세특)</li>
+      <li><b>동아리 담당교사</b> — 동아리활동</li>
+    </ul>
+    <p>특정 반만 한도가 다르면(예: <b>1학년 통합과학 세특 750바이트</b>) <b>등록 현황·관리</b> 탭에서 그 반만 따로 바꿀 수 있어요.</p>` },
+  { t: '2단계 · 학생 명단 올리기', h: `
+    <p><b>설정 ▸ 명단 업로드</b>에서 이렇게 하면 됩니다.</p>
+    <ol>
+      <li>위쪽에서 양식 시트를 고르고 <b>양식 다운로드</b></li>
+      <li>채운 엑셀을 <b>왼쪽 칸에 끌어다 놓기</b></li>
+      <li>오른쪽 미리보기에서 학번·이름을 <b>그 자리에서 수정</b>하거나 <b>+ 학생 추가</b></li>
+      <li><b>등록하기</b></li>
+    </ol>
+    <p>시트 이름(담임/세특/동아리/기타)과 열(과목명·분반·동아리명)로 분류와 그룹이 자동으로 정해져요. 학번은 자릿수 제한이 없습니다.</p>` },
+  { t: '3단계 · 쓰고 점검하기', h: `
+    <p>왼쪽에서 학생을 고르고 위쪽 영역 탭을 선택해 본문을 입력합니다.</p>
+    <ul>
+      <li>📏 <b>게이지</b> — 글자 수·바이트를 실시간으로 보여주고, 한도를 넘으면 빨갛게 알려줘요.</li>
+      <li>🧹 <b>줄바꿈 제거</b> — PDF에서 긁어온 본문의 문장 중간 줄바꿈을 한 번에 정리합니다.</li>
+      <li>🔁 <b>표현 빈도</b> — 반복 단어·상투어를 세고, 누르면 본문에 노란 형광으로 표시 + <b>문장별 보기</b>로 바로 넘어갈 수 있어요.</li>
+      <li>✂️ <b>문장별 보기</b> — 문장 단위로 끊어 보고 너무 긴 문장을 표시해 줍니다.</li>
+    </ul>` },
+  { t: '4단계 · 맞춤법과 이력', h: `
+    <ul>
+      <li>🔍 <b>맞춤법</b> — 부산대 검사기로 점검해요. 결과 줄을 누르면 본문에서 그 부분이 강조되고, <b>반영</b>은 제안대로 고치고 <b>미반영</b>은 무시 목록에 넣어 다음부터 빼줍니다.</li>
+      <li>🕘 <b>이력 보기</b> — 저장 기록을 단어 단위로 비교하고 이전 버전으로 되돌릴 수 있어요(원본은 지워지지 않습니다).</li>
+      <li>📋 <b>복사</b> — 본문을 복사해 NEIS 입력란에 <b>Ctrl+V</b>로 붙여넣기.</li>
+    </ul>
+    <p class="help-note">단축키 — 저장 <b>Ctrl+S</b> · 다음 미작성 <b>Ctrl+→</b></p>` },
+  { t: '5단계 · 진행 관리와 백업', h: `
+    <ul>
+      <li>🏷️ <b>상태 칩</b> — 학생·영역마다 미작성 → 초안 → 검증 → 완료를 클릭으로 순환시켜 표시해요.</li>
+      <li>📊 <b>대시보드</b> — 반 전체 진행률을 보고, 작성한 내용을 <b>엑셀로 내보내기</b> 할 수 있어요.</li>
+      <li>💾 <b>암호화 백업</b> — 설정 ▸ 데이터·백업에서 비밀번호로 내보내, 다른 PC에서 같은 비밀번호로 불러오면 그대로 이어집니다. (비밀번호를 잊으면 복원할 수 없어요.)</li>
+    </ul>
+    <p class="help-lead">처음 5분만 설정하면, 그다음부터는 ‘쓰고 → 점검하고 → 붙여넣기’가 훨씬 가벼워집니다. 🙂</p>` },
+];
+
+function renderHelp() {
+  const i = state.helpPage || 0;
+  const p = HELP_PAGES[i];
+  $('#helpBody').innerHTML = `<div class="help-page"><h4>${p.t}</h4>${p.h}</div>`;
+  $('#helpDots').innerHTML = HELP_PAGES.map((_, k) => `<span class="help-dot${k === i ? ' on' : ''}" data-k="${k}"></span>`).join('');
+  $('#helpPrev').style.visibility = i === 0 ? 'hidden' : 'visible';
+  $('#helpNext').textContent = i === HELP_PAGES.length - 1 ? '시작하기 ✓' : '다음 ▶';
+  $('#helpBody').scrollTop = 0;
+  $('#helpDots').querySelectorAll('.help-dot').forEach((d) => { d.onclick = () => { state.helpPage = Number(d.dataset.k); renderHelp(); }; });
+}
+
+function helpNav(d) {
+  const last = HELP_PAGES.length - 1;
+  if (d > 0 && (state.helpPage || 0) >= last) { closeHelp(); return; }
+  state.helpPage = Math.max(0, Math.min(last, (state.helpPage || 0) + d));
+  renderHelp();
+}
+
+function openHelp() { state.helpPage = 0; renderHelp(); $('#helpModal').hidden = false; }
 function closeHelp() { $('#helpModal').hidden = true; }
 
 function showUpd(msg, percent, ready) {

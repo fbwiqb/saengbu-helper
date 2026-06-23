@@ -204,23 +204,11 @@
         <h3>생기부 입력 도우미 · 사용법</h3>
         <button id="helpClose" class="btn-ghost">닫기</button>
       </div>
-      <div class="help-body">
-        <p class="help-intro">글을 대신 써주는 도구가 아닙니다. <b>내가 쓴 생기부를 빠르게 입력·점검</b>해 NEIS에 붙여넣기 직전까지 돕습니다. 데이터는 이 컴퓨터에만 저장됩니다.</p>
-        <h4>5단계 빠른 시작</h4>
-        <ol class="help-steps">
-          <li><b>설정</b> — 분류별(담임·교과·동아리·기타) 영역과 바이트 한도를 정합니다. 특정 그룹만 다른 한도(예: 1학년 세특 750)는 <i>등록 현황·관리</i>에서 그룹별로 바꿉니다.</li>
-          <li><b>명단 올리기</b> — 양식 시트를 골라 [양식 다운로드] → 엑셀을 왼쪽에 끌어다 놓기 → 오른쪽 미리보기에서 학번·이름을 고치거나 [+ 학생 추가] → [등록하기].</li>
-          <li><b>학생 고르기</b> — 왼쪽 트리에서 그룹을 펼쳐 학생 선택. 이름 옆 색 칩이 진행 상태입니다.</li>
-          <li><b>쓰고 점검</b> — 게이지로 바이트 확인, [줄바꿈 제거]로 PDF 본문 정리, [맞춤법]으로 점검(행 클릭→본문 강조, 반영/미반영), 표현 빈도·문장별 보기로 검토, [이력 보기]로 버전 비교.</li>
-          <li><b>붙여넣기·표시</b> — [복사] 후 NEIS에 Ctrl+V. 상태 칩을 눌러 미작성→초안→검증→완료로 표시(대시보드에 반영).</li>
-        </ol>
-        <h4>알아두면 좋은 것</h4>
-        <ul class="help-tips">
-          <li><b>대시보드</b> — 그룹 진행률 + [엑셀 내보내기](그룹별 본문 저장).</li>
-          <li><b>맞춤법</b>은 부산대 검사기를 씁니다. 이때만 본문이 외부로 전송됩니다(문체 훈수성 제안은 자동 제외).</li>
-          <li><b>다른 PC로 이전</b> — 설정 ▸ 데이터/백업에서 비밀번호로 <b>암호화 백업</b> 내보내기 → 옮긴 뒤 같은 비밀번호로 불러오기. 비밀번호를 잊으면 복원 불가.</li>
-          <li>학번은 자릿수 제한이 없습니다. 단축키: 저장 <b>Ctrl+S</b>, 다음 미작성 <b>Ctrl+→</b>.</li>
-        </ul>
+      <div class="help-body" id="helpBody"></div>
+      <div class="help-nav">
+        <button id="helpPrev" class="btn-ghost" type="button">◀ 이전</button>
+        <span id="helpDots" class="help-dots"></span>
+        <button id="helpNext" class="btn-primary" type="button">다음 ▶</button>
       </div>
     </div>
   </div>

@@ -412,11 +412,20 @@ mark.hl.spell-fixed { background: var(--green-bg); color: var(--green); box-shad
 .modal-box { background: var(--surface); border-radius: var(--radius); box-shadow: 0 20px 60px rgba(40,34,28,.32); width: min(720px, 100%); max-height: 84vh; display: flex; flex-direction: column; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--line); }
 .modal-head h3 { margin: 0; font-size: 16px; }
-.help-body { overflow-y: auto; padding: 14px 18px 18px; line-height: 1.6; }
-.help-intro { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 0 0 8px; }
-.help-body h4 { margin: 16px 0 6px; font-size: 14px; color: var(--accent-ink); }
-.help-steps, .help-tips { padding-left: 20px; font-size: 13px; margin: 4px 0; }
-.help-steps li, .help-tips li { margin-bottom: 7px; }
+.help-box { width: min(640px, 100%); }
+.help-body { overflow-y: auto; padding: 20px 24px; line-height: 1.85; font-size: 15.5px; min-height: 320px; max-height: 62vh; }
+.help-page h4 { margin: 0 0 14px; font-size: 20px; color: var(--accent-ink); }
+.help-page p { margin: 0 0 11px; font-size: 15.5px; }
+.help-page ul, .help-page ol { padding-left: 22px; margin: 6px 0 12px; }
+.help-page li { margin-bottom: 10px; font-size: 15.5px; }
+.help-lead { font-size: 16.5px; font-weight: 600; }
+.help-note { background: var(--surface-2); border-radius: 8px; padding: 11px 13px; font-size: 14.5px; }
+.help-tip { color: var(--ink-faint); font-size: 14px; }
+.help-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 22px 16px; border-top: 1px solid var(--line); }
+.help-nav .btn-primary, .help-nav .btn-ghost { padding: 8px 18px; font-size: 14px; }
+.help-dots { display: flex; gap: 8px; }
+.help-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); cursor: pointer; transition: background .15s; }
+.help-dot.on { background: var(--accent); }
 .hist-body { padding: 8px 18px 18px; overflow-y: auto; }
 .ver-item { padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
 .ver-item:last-child { border-bottom: none; }
