@@ -71,6 +71,7 @@
         <button class="settab sel" data-t="areas" type="button">영역·바이트</button>
         <button class="settab" data-t="upload" type="button">명단 업로드</button>
         <button class="settab" data-t="manage" type="button">등록 현황·관리</button>
+        <button class="settab" data-t="phrases" type="button">공통문구</button>
         <button class="settab" data-t="backup" type="button">데이터·백업</button>
       </div>
       <div class="setpane" data-pane="areas">
@@ -124,6 +125,16 @@
       <div id="managePanel" class="card"></div>
 
       </div>
+      <div class="setpane" data-pane="phrases" hidden>
+      <h2>공통문구</h2>
+      <p class="muted">정시·세특 도입부처럼 반복되는 구절을 그룹별로 등록해 두면, 작성 중 <b>공통문구</b> 버튼으로 골라 한 번에 삽입됩니다. <b>전체 공용</b>으로 두면 모든 그룹에서 보입니다.</p>
+      <div id="phraseList"></div>
+      <div class="cfg-actions">
+        <button id="phraseAdd" class="btn-ghost" type="button">+ 공통문구 추가</button>
+        <button id="phraseSave" class="btn-primary" type="button">저장</button>
+        <span id="phraseMsg" class="muted"></span>
+      </div>
+      </div>
       <div class="setpane" data-pane="backup" hidden>
       <h2>데이터 / 백업</h2>
       <p class="muted">생기부 기록은 아래 폴더의 <b>saengbu.db</b> 파일에 저장됩니다. 다른 PC에서 이어서 작업하려면 <b>백업 내보내기</b>로 암호화 파일을 만들어 옮긴 뒤 <b>백업 불러오기</b>로 복원하세요.</p>
@@ -176,8 +187,12 @@
             <div class="track"><div id="gaugeFill"></div></div>
           </div>
           <div class="editbar">
+            <div class="phrase-wrap">
+              <button id="phraseBtn" class="btn-ghost" type="button" title="등록한 공통문구를 골라 커서 위치에 삽입">공통문구 ▾</button>
+              <div id="phraseMenu" class="phrase-menu" hidden></div>
+            </div>
             <button id="sentToggle" class="btn-ghost">문장별 보기</button>
-            <button id="dejoinBtn" class="btn-ghost" title="PDF 등에서 복사한 본문의 문장 중간 줄바꿈을 제거">줄바꿈 제거</button>
+            <button id="dejoinBtn" class="btn-ghost" title="문장 중간 줄바꿈과 이중 공백을 한 번에 정리">줄바꿈·공백 정리</button>
           </div>
           <textarea id="body" placeholder="생기부 본문을 입력하세요"></textarea>
           <div id="sentView" class="sent-view" hidden></div>

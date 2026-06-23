@@ -91,6 +91,7 @@ async function boot() {
   state.config = await j('/api/config');
   state.forbidden = await j('/api/forbidden');
   try { state.spellIgnore = new Set(await j('/api/spell-ignore')); } catch (e) { state.spellIgnore = new Set(); }
+  try { state.phrases = await j('/api/common-phrases'); } catch (e) { state.phrases = []; }
   buildTargets();
   await refreshGroups();
   $('#body').addEventListener('input', () => {
@@ -142,6 +143,10 @@ async function boot() {
   $('#resetDataBtn').onclick = resetData;
   $('#bugBtn').onclick = () => openIssue('bug');
   $('#featBtn').onclick = () => openIssue('feat');
+  $('#phraseAdd').onclick = phraseAdd;
+  $('#phraseSave').onclick = phraseSave;
+  $('#phraseBtn').onclick = togglePhraseMenu;
+  document.addEventListener('click', (e) => { if (!e.target.closest('.phrase-wrap')) { const m = $('#phraseMenu'); if (m) m.hidden = true; } });
   $('#bakExportBtn').onclick = exportBackup;
   $('#bakImportBtn').onclick = importBackup;
   const dz = $('#dropzone');
@@ -474,12 +479,12 @@ function toggleSentMode() {
 function dejoinBody() {
   const before = $('#body').value;
   const after = before.replace(/[ \t]*\r?\n[ \t]*/g, ' ').replace(/ {2,}/g, ' ').trim();
-  if (after === before) { showToast('제거할 줄바꿈이 없습니다'); return; }
+  if (after === before) { showToast('정리할 줄바꿈·이중 공백이 없습니다'); return; }
   $('#body').value = after;
   state.dirty = true;
   if (state.sentMode || state.hlMode) showEdit();
   renderAssist();
-  showToast('✓ 줄바꿈 제거됨');
+  showToast('✓ 줄바꿈·이중 공백 정리됨');
 }
 
 function highlightTerm(term, markClass) {
@@ -1093,6 +1098,90 @@ function byteSelect(area, limit) {
 function selectSetPane(t) {
   document.querySelectorAll('.settab').forEach((x) => x.classList.toggle('sel', x.dataset.t === t));
   document.querySelectorAll('.setpane').forEach((p) => { p.hidden = p.dataset.pane !== t; });
+  if (t === 'phrases') renderPhrases();
+}
+
+function phraseGroupOptions(sel) {
+  const opts = ['<option value="">전체 공용</option>'];
+  for (const g of (state.groupsList || [])) opts.push(`<option value="${esc(g.group_tag)}" ${g.group_tag === sel ? 'selected' : ''}>${esc(g.group_tag)}</option>`);
+  return opts.join('');
+}
+
+function renderPhrases() {
+  const list = state.phrases || [];
+  const rows = list.map((p, i) => `<div class="phrase-row card" data-i="${i}">
+      <div class="row">
+        <select class="ph-group" data-i="${i}">${phraseGroupOptions(p.group_tag || '')}</select>
+        <input class="ph-title" data-i="${i}" type="text" placeholder="제목 (목록에 표시될 이름)" value="${esc(p.title || '')}" />
+        <span class="spacer"></span>
+        <button class="ph-del btn-ghost danger" data-i="${i}" type="button">삭제</button>
+      </div>
+      <textarea class="ph-text" data-i="${i}" rows="3" placeholder="삽입할 문구 (예: ~~~한 수행평가에서 )">${esc(p.text || '')}</textarea>
+    </div>`).join('');
+  $('#phraseList').innerHTML = rows || '<div class="empty">등록된 공통문구가 없습니다. 아래 ‘+ 공통문구 추가’를 누르세요.</div>';
+  $('#phraseList').querySelectorAll('.ph-del').forEach((b) => { b.onclick = () => { collectPhrases(); state.phrases.splice(Number(b.dataset.i), 1); renderPhrases(); }; });
+}
+
+function collectPhrases() {
+  const prev = state.phrases || [];
+  state.phrases = [...document.querySelectorAll('#phraseList .phrase-row')].map((r) => ({
+    id: (prev[Number(r.dataset.i)] || {}).id || ('cp' + Date.now() + Math.floor(Math.random() * 1000)),
+    group_tag: r.querySelector('.ph-group').value,
+    title: r.querySelector('.ph-title').value,
+    text: r.querySelector('.ph-text').value,
+  }));
+}
+
+function phraseAdd() {
+  collectPhrases();
+  state.phrases.push({ id: 'cp' + Date.now(), group_tag: (state.view === 'student' ? state.group : '') || '', title: '', text: '' });
+  renderPhrases();
+}
+
+async function phraseSave() {
+  collectPhrases();
+  const payload = (state.phrases || []).filter((p) => (p.text || '').trim());
+  try {
+    const r = await fetch('/api/common-phrases', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phrases: payload }) });
+    const d = await r.json();
+    if (!r.ok) { $('#phraseMsg').textContent = d.error || '저장 실패'; return; }
+    state.phrases = d;
+    renderPhrases();
+    $('#phraseMsg').textContent = `✓ 저장됨 (${d.length}개)`;
+    setTimeout(() => { $('#phraseMsg').textContent = ''; }, 3000);
+  } catch (e) { $('#phraseMsg').textContent = '저장 실패'; }
+}
+
+function applicablePhrases() {
+  const g = state.group || '';
+  return (state.phrases || []).filter((p) => (p.text || '').trim() && (!p.group_tag || p.group_tag === g));
+}
+
+function togglePhraseMenu() {
+  const menu = $('#phraseMenu');
+  if (!menu) return;
+  if (!menu.hidden) { menu.hidden = true; return; }
+  const list = applicablePhrases();
+  if (!list.length) { showToast('이 그룹에 등록된 공통문구가 없습니다 (설정 ▸ 공통문구)'); return; }
+  menu.innerHTML = list.map((p) => `<button class="ph-item" type="button" data-id="${esc(p.id)}"><span class="ph-it-t">${esc(p.title || p.text.slice(0, 24))}</span>${p.group_tag ? '' : '<span class="ph-all">전체</span>'}</button>`).join('');
+  menu.querySelectorAll('.ph-item').forEach((b) => {
+    b.onclick = () => { const p = list.find((x) => x.id === b.dataset.id); if (p) insertCommonPhrase(p.text); menu.hidden = true; };
+  });
+  menu.hidden = false;
+}
+
+function insertCommonPhrase(text) {
+  if (state.sentMode || state.hlMode) showEdit();
+  const ta = $('#body');
+  const s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+  const e = ta.selectionEnd != null ? ta.selectionEnd : s;
+  const v = ta.value;
+  const head = v.slice(0, s) + text;
+  ta.value = (head + v.slice(e)).replace(/ {2,}/g, ' ');
+  const pos = head.replace(/ {2,}/g, ' ').length;
+  ta.focus();
+  try { ta.setSelectionRange(pos, pos); } catch (_) {}
+  ta.dispatchEvent(new Event('input'));
 }
 
 function renderSettings() {

@@ -244,6 +244,22 @@ button:active { transform: translateY(1px); }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent-ink); }
 .btn-ghost.danger { color: var(--red, #bf4630); border-color: #e6c4bc; }
 .btn-ghost.danger:hover { background: #fbece8; border-color: var(--red, #bf4630); color: var(--red, #bf4630); }
+
+/* common phrases */
+.phrase-wrap { position: relative; display: inline-block; }
+.phrase-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 220px; max-width: 360px;
+  max-height: 300px; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(40,32,20,.18); padding: 6px; }
+.ph-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0;
+  padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13.5px; color: var(--ink); }
+.ph-item:hover { background: var(--accent-soft); }
+.ph-item .ph-it-t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ph-item .ph-all, .phrase-row .ph-all { font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 7px; border-radius: 999px; }
+.phrase-row { margin-bottom: 12px; }
+.phrase-row .ph-group { min-width: 150px; }
+.phrase-row .ph-title { flex: 1; min-width: 160px; }
+.phrase-row .ph-text { width: 100%; margin-top: 8px; resize: vertical; font: inherit; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 #addBtn { background: var(--accent-soft); color: var(--accent-ink); border-color: #cfe4dc; padding: 8px 12px; }
 #addBtn:hover { background: #d7eae3; }
 

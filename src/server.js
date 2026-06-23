@@ -63,6 +63,23 @@ function createApp(db) {
   app.get('/api/forbidden', (_req, res) => res.json(FORBIDDEN));
   app.get('/api/byte-targets', (_req, res) => res.json(TARGETS));
 
+  app.get('/api/common-phrases', (_req, res) => {
+    try {
+      const row = db.prepare("SELECT value FROM app_config WHERE key = 'common_phrases'").get();
+      res.json(row && row.value ? JSON.parse(row.value) : []);
+    } catch (e) { res.json([]); }
+  });
+  app.put('/api/common-phrases', (req, res) => {
+    try {
+      const arr = Array.isArray((req.body || {}).phrases) ? req.body.phrases : [];
+      const clean = arr
+        .filter((p) => p && String(p.text || '').trim())
+        .map((p) => ({ id: String(p.id || ''), group_tag: String(p.group_tag || ''), title: String(p.title || '').slice(0, 60), text: String(p.text || '') }));
+      db.prepare("INSERT INTO app_config(key,value) VALUES('common_phrases',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(clean));
+      res.json(clean);
+    } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+  });
+
   app.get('/api/config', (_req, res) => res.json({ categories: db_.CATEGORIES, areas: db_.getAreasConfig(db) }));
   app.put('/api/config', (req, res) => {
     const saved = db_.setAreasConfig(db, (req.body || {}).areas || {});
