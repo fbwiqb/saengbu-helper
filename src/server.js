@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const { calcBytes, evaluate, TARGETS } = require('./bytes');
+const { calcBytes, evaluate } = require('./bytes');
 const { loadForbidden, scan } = require('./forbidden');
 const { extractBooks } = require('./books');
 const backup = require('./backup');
@@ -61,7 +61,6 @@ function createApp(db) {
   });
 
   app.get('/api/forbidden', (_req, res) => res.json(FORBIDDEN));
-  app.get('/api/byte-targets', (_req, res) => res.json(TARGETS));
 
   app.get('/api/common-phrases', (_req, res) => {
     try {
@@ -138,8 +137,6 @@ function createApp(db) {
     res.setHeader('Content-Disposition', 'attachment; filename="student-template.csv"');
     res.send(csv);
   });
-
-  app.post('/api/extract-books', (req, res) => res.json(extractBooks((req.body || {}).text || '')));
 
   app.post('/api/spellcheck', async (req, res) => {
     const text = (req.body || {}).text || '';

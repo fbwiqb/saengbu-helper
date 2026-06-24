@@ -159,7 +159,7 @@ async function boot() {
   $('#upFile').onchange = (e) => { const f = e.target.files[0]; if (f) previewUpload(f); };
   $('#upAddStuBtn').onclick = addUpStudent;
   $('#upRegisterBtn').onclick = confirmUpload;
-  $('#stuSearch').oninput = onSearch;
+  $('#stuSearch').oninput = () => { clearTimeout(state.searchTimer); state.searchTimer = setTimeout(onSearch, 140); };
   $('#sortToggle').onclick = () => { state.sortUnwritten = !state.sortUnwritten; $('#sortToggle').textContent = state.sortUnwritten ? '미작성순' : '학번순'; renderTree(); };
   document.addEventListener('keydown', onKey);
   Object.defineProperty(window, '__appDirty', { get: () => !!state.dirty });
@@ -404,6 +404,8 @@ function selectArea(area) {
 }
 
 async function gotoNextUnwritten() {
+  await saveIfDirty();
+  await loadList();
   const list = state.listCache.length ? state.listCache : await j('/api/students?group=' + encodeURIComponent(state.group || ''));
   const idx = list.findIndex((s) => s.hakbun === state.hakbun);
   const order = list.slice(idx + 1).concat(list.slice(0, idx + 1));
@@ -776,21 +778,21 @@ function closeHistory() { $('#histModal').hidden = true; }
 const HELP_PAGES = [
   { t: '환영합니다 👋', h: `
     <p class="help-lead">생기부 입력 도우미는 <b>학기별 생기부를 빠르게 입력하고 점검</b>하도록 돕는 프로그램이에요.</p>
-    <p>글은 선생님이 쓰고, <b>바이트 세기·맞춤법·반복 표현·진행 관리</b>처럼 번거로운 일은 프로그램이 맡습니다. NEIS에 붙여넣기 직전, 마지막 점검까지 도와드려요.</p>
-    <p class="help-note">🔒 모든 데이터는 <b>이 컴퓨터에만</b> 저장됩니다. 맞춤법 검사를 누를 때만 본문이 외부(부산대 검사기)로 전송돼요.</p>
+    <p>글은 선생님이 쓰고, <b>바이트 세기·맞춤법·반복 표현·공통문구·진행 관리</b>처럼 번거로운 일은 프로그램이 맡습니다. NEIS에 붙여넣기 직전, 마지막 점검까지 도와드려요.</p>
+    <p class="help-note">🔒 모든 데이터는 <b>이 컴퓨터에만</b> 저장됩니다. (맞춤법 검사를 누를 때만 본문이 검사기로 전송돼요.)</p>
     <p class="help-tip">오른쪽 아래 <b>다음 ▶</b> 을 눌러 한 장씩 따라와 보세요.</p>` },
   { t: '1단계 · 무엇을 쓸지 정하기 (설정)', h: `
     <p>맨 위 <b>설정</b> 탭에서, 분류마다 작성할 영역과 글자 수(바이트) 한도를 정합니다.</p>
     <ul>
       <li><b>담임교사</b> — 자율·자치활동, 진로활동, 행동특성</li>
       <li><b>교과 담당교사</b> — 세부능력및특기사항(세특)</li>
-      <li><b>동아리 담당교사</b> — 동아리활동</li>
+      <li><b>동아리 담당교사</b> — 동아리활동 / 그 밖은 <b>기타</b>로 직접 추가</li>
     </ul>
-    <p>특정 반만 한도가 다르면(예: <b>1학년 통합과학 세특 750바이트</b>) <b>등록 현황·관리</b> 탭에서 그 반만 따로 바꿀 수 있어요.</p>` },
+    <p>특정 반만 한도가 다르면(예: <b>1학년 통합과학 세특 750바이트</b>) <b>등록 현황·관리</b> 탭에서 그 그룹만 따로 바꿀 수 있어요. 프리셋(1500·900·750) 외 <b>직접입력</b>도 됩니다.</p>` },
   { t: '2단계 · 학생 명단 올리기', h: `
     <p><b>설정 ▸ 명단 업로드</b>에서 이렇게 하면 됩니다.</p>
     <ol>
-      <li>위쪽에서 양식 시트를 고르고 <b>양식 다운로드</b></li>
+      <li>내 역할(담임/세특/동아리/기타)을 체크하고 <b>양식 다운로드</b></li>
       <li>채운 엑셀을 <b>왼쪽 칸에 끌어다 놓기</b></li>
       <li>오른쪽 미리보기에서 학번·이름을 <b>그 자리에서 수정</b>하거나 <b>+ 학생 추가</b></li>
       <li><b>등록하기</b></li>
@@ -800,24 +802,35 @@ const HELP_PAGES = [
     <p>왼쪽에서 학생을 고르고 위쪽 영역 탭을 선택해 본문을 입력합니다.</p>
     <ul>
       <li>📏 <b>게이지</b> — 글자 수·바이트를 실시간으로 보여주고, 한도를 넘으면 빨갛게 알려줘요.</li>
-      <li>🧹 <b>줄바꿈 제거</b> — PDF에서 긁어온 본문의 문장 중간 줄바꿈을 한 번에 정리합니다.</li>
-      <li>🔁 <b>표현 빈도</b> — 반복 단어·상투어를 세고, 누르면 본문에 노란 형광으로 표시 + <b>문장별 보기</b>로 바로 넘어갈 수 있어요.</li>
-      <li>✂️ <b>문장별 보기</b> — 문장 단위로 끊어 보고 너무 긴 문장을 표시해 줍니다.</li>
+      <li>⚡ <b>공통문구</b> — 편집줄 왼쪽 버튼들. 미리 등록한 반복 구절(정시·세특 도입부 등)을 <b>한 번에 삽입</b>(단축키 <b>Ctrl+1·2·3…</b>). 등록은 <b>설정 ▸ 공통문구</b>에서 그룹별·전체 공용으로.</li>
+      <li>🔁 <b>표현 빈도</b> — 반복 단어·상투어를 세고, 누르면 본문에 노란 형광 표시 + <b>문장별 보기</b>로 바로 전환.</li>
+      <li>✂️ <b>문장별 보기</b> — 문장 단위로 끊어 보고 너무 긴 문장을 표시.</li>
+      <li>🧹 <b>줄바꿈·공백 정리</b> — PDF에서 긁어온 본문의 중간 줄바꿈과 이중 공백을 한 번에 정리.</li>
+      <li>🏷️ <b>상태</b> — 왼쪽 사이드바 색 칩을 클릭하면 미작성→초안→검증→완료가 바뀌고 <b>바로 저장</b>됩니다.</li>
     </ul>` },
   { t: '4단계 · 맞춤법과 이력', h: `
     <ul>
-      <li>🔍 <b>맞춤법</b> — 부산대 검사기로 점검해요. 결과 줄을 누르면 본문에서 그 부분이 강조되고, <b>반영</b>은 제안대로 고치고 <b>미반영</b>은 무시 목록에 넣어 다음부터 빼줍니다.</li>
+      <li>🔍 <b>맞춤법</b> — 부산대 검사기로 점검. 결과 줄을 누르면 본문에서 강조되고, <b>반영</b>은 제안대로 고치고 <b>미반영</b>은 무시 목록에 넣어 다음부터 빼줍니다.</li>
+      <li>␣ <b>이중 공백</b> — 맞춤법 점검 시 연속 공백도 같이 잡아 <b>한 번에 한 칸으로</b> 정리해요(검사기 연결이 안 돼도 작동).</li>
       <li>🕘 <b>이력 보기</b> — 저장 기록을 단어 단위로 비교하고 이전 버전으로 되돌릴 수 있어요(원본은 지워지지 않습니다).</li>
       <li>📋 <b>복사</b> — 본문을 복사해 NEIS 입력란에 <b>Ctrl+V</b>로 붙여넣기.</li>
     </ul>
-    <p class="help-note">단축키 — 저장 <b>Ctrl+S</b> · 다음 미작성 <b>Ctrl+→</b></p>` },
-  { t: '5단계 · 진행 관리와 백업', h: `
+    <p class="help-note">단축키 — 저장 <b>Ctrl+S</b> · 다음 미작성 <b>Ctrl+→</b> · 공통문구 <b>Ctrl+1~9</b></p>` },
+  { t: '5단계 · 대시보드 · 복사 · 백업', h: `
     <ul>
-      <li>🏷️ <b>상태 칩</b> — 학생·영역마다 미작성 → 초안 → 검증 → 완료를 클릭으로 순환시켜 표시해요.</li>
-      <li>📊 <b>대시보드</b> — 반 전체 진행률을 보고, 작성한 내용을 <b>엑셀로 내보내기</b> 할 수 있어요.</li>
-      <li>💾 <b>암호화 백업</b> — 설정 ▸ 데이터·백업에서 비밀번호로 내보내, 다른 PC에서 같은 비밀번호로 불러오면 그대로 이어집니다. (비밀번호를 잊으면 복원할 수 없어요.)</li>
+      <li>📊 <b>대시보드</b> — 반 전체·세특 분반별 진행률을 한눈에, 작성 내용을 <b>엑셀로 내보내기</b>.</li>
+      <li>📋 <b>영역별 복사</b> — 대시보드 상단 <b>[자율][진로][행특]</b> 버튼을 누르면 그 영역만 학생별 한 줄씩 떠서, 복사 버튼으로 내려가며 NEIS에 붙여넣기. (창체는 엑셀 업로드가 안 되니 이게 빨라요.)</li>
+      <li>💾 <b>암호화 백업</b> — 설정 ▸ 데이터·백업에서 비밀번호로 내보내, 다른 PC에서 같은 비밀번호로 불러오면 그대로 이어집니다. (비밀번호를 잊으면 복원 불가)</li>
+      <li>🗑️ <b>데이터 삭제</b> — 새 학년엔 ‘생기부 데이터 삭제하기’로 명단·그룹·기록을 한 번에 초기화. <b>되돌릴 수 없으니 먼저 백업</b>하세요(영역·바이트 설정은 유지).</li>
+    </ul>` },
+  { t: '6단계 · 업데이트 · 피드백 · 종료', h: `
+    <ul>
+      <li>🔄 <b>자동 업데이트</b> — 새 버전이 나오면 알아서 받아 둡니다. 배너의 <b>변경 내용</b>으로 무엇이 바뀌었는지 볼 수 있어요.</li>
+      <li>💬 <b>피드백</b> — 설정 ▸ <b>피드백</b>에서 버그 신고·기능 제안을 보내면 개발자(신도경)에게 전달됩니다. (학생 개인정보는 적지 마세요.)</li>
+      <li>⏻ <b>프로그램 종료</b> — 왼쪽 아래 버튼. 저장 안 된 변경이 있으면 한 번 더 물어봐요.</li>
     </ul>
-    <p class="help-lead">처음 5분만 설정하면, 그다음부터는 ‘쓰고 → 점검하고 → 붙여넣기’가 훨씬 가벼워집니다. 🙂</p>` },
+    <p class="help-lead">처음 5분만 설정하면, 그다음부터는 ‘쓰고 → 점검하고 → 붙여넣기’가 훨씬 가벼워집니다. 🙂</p>
+    <p class="help-tip">이 안내는 아래 <b>다시 보지 않기</b>로 끌 수 있고, 왼쪽 위 <b>?</b> 로 언제든 다시 열 수 있어요.</p>` },
 ];
 
 function renderHelp() {
@@ -873,6 +886,7 @@ function openFb(kind) {
   $('#fbModalTitle').textContent = kind === 'feat' ? '기능 제안' : '버그 신고';
   $('#fbSubject').value = '';
   $('#fbDesc').value = '';
+  $('#fbSubject').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); submitFb(); } };
   $('#fbModal').hidden = false;
   setTimeout(() => $('#fbSubject').focus(), 0);
 }
@@ -892,7 +906,7 @@ async function submitFb() {
   try {
     await fetch(FB_FORM, { method: 'POST', mode: 'no-cors', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: fd.toString() });
     closeFb();
-    $('#fbMsg').textContent = '✓ 보냈습니다. 감사합니다!';
+    $('#fbMsg').textContent = '✓ 전송했습니다. 감사합니다!';
   } catch (e) {
     $('#fbMsg').textContent = '전송 실패 — 인터넷 연결을 확인하세요';
   }
@@ -1007,9 +1021,14 @@ async function saveIfDirty() {
 }
 
 function onKey(e) {
+  if (e.key === 'Escape') {
+    if (!$('#histModal').hidden) { closeHistory(); return; }
+    if (!$('#helpModal').hidden) { closeHelp(); return; }
+    if (!$('#fbModal').hidden) { closeFb(); return; }
+  }
   const mod = e.ctrlKey || e.metaKey;
   if (mod && (e.key === 's' || e.key === 'S')) { e.preventDefault(); if (state.hakbun) saveRecord(); }
-  else if (mod && e.key === 'ArrowRight') { e.preventDefault(); if (state.hakbun) gotoNextUnwritten(); }
+  else if (mod && e.key === 'ArrowRight') { if (document.activeElement === $('#body')) return; e.preventDefault(); if (state.hakbun) gotoNextUnwritten(); }
   else if (mod && /^[1-9]$/.test(e.key) && state.view === 'student' && state.hakbun && state.area && !$('#body').hidden) {
     const p = applicablePhrases()[Number(e.key) - 1];
     if (p) { e.preventDefault(); insertCommonPhrase(p.text); }
@@ -1194,7 +1213,7 @@ function renderPhraseButtons() {
   const list = applicablePhrases();
   el.innerHTML = list.map((p, i) => {
     const kbd = i < 9 ? `<span class="kbd">Ctrl+${i + 1}</span>` : '';
-    return `<button class="ph-quick btn-ghost" type="button" data-id="${esc(p.id)}" title="${esc(p.text)}">${esc(p.title || p.text.slice(0, 16))}${kbd}</button>`;
+    return `<button class="ph-quick btn-ghost" type="button" data-id="${esc(p.id)}" title="${esc(p.text)}"><span class="ph-q-t">${esc(p.title || p.text.slice(0, 16))}</span>${kbd}</button>`;
   }).join('');
   el.querySelectorAll('.ph-quick').forEach((b) => { b.onclick = () => { const p = list.find((x) => x.id === b.dataset.id); if (p) insertCommonPhrase(p.text); }; });
 }

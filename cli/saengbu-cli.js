@@ -33,11 +33,6 @@ function main() {
     db_.upsertRecord(db, { hakbun, area, subject, body, bytes: calcBytes(body), status: '초안' });
     console.log(`set ${hakbun}/${area}${subject ? '/' + subject : ''} (${calcBytes(body)} bytes)`);
 
-  } else if (cmd === 'legacy') {
-    const hakbun = process.argv[3];
-    db_.saveLegacy(db, { hakbun, dup_avoid: arg('--dup') || '', growth_link: arg('--growth') || '', gap_fill: arg('--gap') || '' });
-    console.log(`legacy saved for ${hakbun}`);
-
   } else if (cmd === 'get') {
     const hakbun = process.argv[3];
     console.log(JSON.stringify(db_.getStudent(db, hakbun), null, 2));
@@ -61,28 +56,8 @@ function main() {
       console.log(`${r.hakbun} ${r.name}  (${areas})`);
     }
 
-  } else if (cmd === 'feedback') {
-    const group = arg('--group');
-    const limit = Number(arg('--limit')) || 20;
-    const edits = db_.recentEdits(db, group, limit);
-    if (!edits.length) { console.log('수정 이력 없음'); }
-    for (const e of edits) {
-      console.log(`[${e.created_at}] ${e.hakbun} ${e.area}${e.subject ? '/' + e.subject : ''}${e.reason ? ' · ' + e.reason : ''}`);
-      console.log(`  - before: ${e.before}`);
-      console.log(`  + after : ${e.after}`);
-    }
-
-  } else if (cmd === 'promote') {
-    const hakbun = process.argv[3];
-    const area = process.argv[4];
-    const subject = arg('--subject') || '';
-    if (!hakbun || !area) { console.error('usage: promote <hakbun> <area> [--subject S]'); process.exit(1); }
-    const ex = db_.promoteExemplar(db, hakbun, area, subject);
-    if (!ex) { console.error('record not found'); process.exit(1); }
-    console.log(`promoted ${hakbun}/${area}${subject ? '/' + subject : ''} (${ex.text.length} chars)`);
-
   } else {
-    console.error('commands: import-roster | set | legacy | get | status | pending | feedback | promote');
+    console.error('commands: import-roster | set | get | status | pending');
     process.exit(1);
   }
 }
