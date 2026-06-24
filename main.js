@@ -4,6 +4,8 @@ const net = require('net');
 
 const isDev = !app.isPackaged;
 let mainWin = null;
+let autoUpdaterRef = null;
+let updateReady = false;
 
 function findFreePort(preferred) {
   return new Promise((resolve) => {
@@ -53,6 +55,9 @@ async function createWindow() {
         if (res !== 0) return;
       }
       forceClose = true;
+      if (updateReady && autoUpdaterRef) {
+        try { autoUpdaterRef.quitAndInstall(true, false); return; } catch (_e) {}
+      }
       win.destroy();
     });
   });
@@ -67,12 +72,14 @@ async function createWindow() {
 function setupAutoUpdate() {
   try {
     const { autoUpdater } = require('electron-updater');
+    autoUpdaterRef = autoUpdater;
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
     const send = (ch, data) => { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send(ch, data); };
     autoUpdater.on('update-available', (info) => send('upd:available', { version: info && info.version }));
     autoUpdater.on('download-progress', (p) => send('upd:progress', { percent: p.percent || 0, transferred: p.transferred, total: p.total }));
-    autoUpdater.on('update-downloaded', (info) => send('upd:downloaded', { version: info && info.version }));
+    autoUpdater.on('update-downloaded', (info) => { updateReady = true; send('upd:downloaded', { version: info && info.version }); });
+    autoUpdater.on('update-not-available', (info) => send('upd:none', { version: info && info.version }));
     autoUpdater.on('error', (e) => send('upd:error', { message: String((e && e.message) || e) }));
     ipcMain.on('upd:restart', () => { try { autoUpdater.quitAndInstall(); } catch (_e) {} });
     ipcMain.on('upd:check', () => { try { autoUpdater.checkForUpdates(); } catch (_e) {} });

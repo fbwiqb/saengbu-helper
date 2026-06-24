@@ -923,14 +923,27 @@ function showUpd(msg, percent, ready) {
   $('#updNotes').hidden = false;
 }
 
+function setUpdMsg(t) { const el = $('#updCheckMsg'); if (el) el.textContent = t; }
+
+function checkUpdate() {
+  if (!window.updater) { setUpdMsg('데스크톱 앱에서만 확인할 수 있어요'); return; }
+  state.updChecking = true;
+  setUpdMsg('업데이트 확인 중…');
+  window.updater.check();
+  setTimeout(() => { if (state.updChecking) { state.updChecking = false; if ($('#updCheckMsg').textContent === '업데이트 확인 중…') setUpdMsg('확인 시간 초과 — 잠시 후 다시 시도하세요'); } }, 20000);
+}
+
 function initUpdater() {
+  $('#updCheckBtn').onclick = checkUpdate;
   if (!window.updater) return;
   $('#updRestart').onclick = () => window.updater.restart();
   $('#updNotes').onclick = () => openExternal(REPO_URL + '/releases');
   $('#updClose').onclick = () => { $('#updBanner').hidden = true; };
-  window.updater.onAvailable((d) => showUpd(`새 버전 ${d.version || ''} 발견 — 다운로드 준비 중…`, 0, false));
+  window.updater.onAvailable((d) => { state.updChecking = false; showUpd(`새 버전 ${d.version || ''} 발견 — 다운로드 준비 중…`, 0, false); setUpdMsg(`업데이트가 있습니다 (${d.version || ''}) — 받는 중…`); });
   window.updater.onProgress((d) => showUpd(`업데이트 다운로드 중… ${Math.round(d.percent || 0)}%`, d.percent || 0, false));
-  window.updater.onDownloaded((d) => showUpd(`새 버전 ${d.version || ''} 준비 완료 — 재시작하면 적용됩니다`, 100, true));
+  window.updater.onDownloaded((d) => { state.updChecking = false; showUpd(`새 버전 ${d.version || ''} 준비 완료 — 재시작하면 적용됩니다`, 100, true); setUpdMsg(`새 버전 ${d.version || ''} 준비 완료 — 종료/재시작 시 적용`); });
+  window.updater.onNone(() => { state.updChecking = false; setUpdMsg('최신 버전입니다 ✓'); });
+  window.updater.onError(() => { state.updChecking = false; setUpdMsg('확인 실패 — 인터넷을 확인하세요'); });
 }
 
 async function exportBackup() {
