@@ -6,6 +6,7 @@ const isDev = !app.isPackaged;
 let mainWin = null;
 let autoUpdaterRef = null;
 let updateReady = false;
+let relaunchAfterInstall = false;
 
 function findFreePort(preferred) {
   return new Promise((resolve) => {
@@ -52,11 +53,11 @@ async function createWindow() {
       if (dirty) {
         const { dialog } = require('electron');
         const res = dialog.showMessageBoxSync(win, { type: 'warning', noLink: true, buttons: ['종료', '취소'], defaultId: 1, cancelId: 1, title: '종료', message: '저장하지 않은 변경이 있습니다. 종료할까요?' });
-        if (res !== 0) return;
+        if (res !== 0) { relaunchAfterInstall = false; return; }
       }
       forceClose = true;
       if (updateReady && autoUpdaterRef) {
-        try { autoUpdaterRef.quitAndInstall(true, false); return; } catch (_e) {}
+        try { autoUpdaterRef.quitAndInstall(true, relaunchAfterInstall); return; } catch (_e) {}
       }
       win.destroy();
     });
@@ -81,7 +82,7 @@ function setupAutoUpdate() {
     autoUpdater.on('update-downloaded', (info) => { updateReady = true; send('upd:downloaded', { version: info && info.version }); });
     autoUpdater.on('update-not-available', (info) => send('upd:none', { version: info && info.version }));
     autoUpdater.on('error', (e) => send('upd:error', { message: String((e && e.message) || e) }));
-    ipcMain.on('upd:restart', () => { try { autoUpdater.quitAndInstall(); } catch (_e) {} });
+    ipcMain.on('upd:restart', () => { relaunchAfterInstall = true; if (mainWin && !mainWin.isDestroyed()) mainWin.close(); });
     ipcMain.on('upd:check', () => { try { autoUpdater.checkForUpdates(); } catch (_e) {} });
     autoUpdater.checkForUpdates();
   } catch (_e) {}
