@@ -1,6 +1,6 @@
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortUnwritten: false, hlMode: false, hlTerm: null, hlClass: 'hl', sentParts: [], spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null };
+let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortUnwritten: false, hlMode: false, hlTerm: null, hlClass: 'hl', hlSpacing: false, sentParts: [], spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null };
 let dashBodies = {};
 
 const AREA_LABEL = {
@@ -447,13 +447,21 @@ function markTerm(s, term, cls) {
   return term ? esc(s).split(esc(term)).join(`<mark class="${cls || 'hl'}">${esc(term)}</mark>`) : esc(s);
 }
 
+function markSpacing(s) {
+  return esc(s).replace(/ {2,}/g, (m) => `<mark class="hl space-err">${'·'.repeat(m.length)}</mark>`);
+}
+
 function renderSentences(text) {
   const raw = sentenceParts(text);
   state.sentParts = raw;
   const term = state.hlTerm;
   const cls = state.hlClass || 'hl';
+  const spacing = state.hlSpacing;
   let head = '';
-  if (term) {
+  if (spacing) {
+    const count = (text.match(/ {2,}/g) || []).length;
+    head = `<div class="hl-head">이중 공백 ${count}곳 강조 · <button class="hl-clear" type="button">강조 해제</button></div>`;
+  } else if (term) {
     const count = text.split(term).length - 1;
     head = `<div class="hl-head">‘<b>${esc(term)}</b>’ ${count}회 강조 · <button class="hl-clear" type="button">강조 해제</button></div>`;
   }
@@ -465,12 +473,13 @@ function renderSentences(text) {
     const long = n > 120;
     const veryLong = n > 160;
     const scls = veryLong ? 'sent vlong' : long ? 'sent long' : 'sent';
-    return `<div class="${scls}"><span class="sno">${visible}</span><span class="stx" contenteditable="true" data-pi="${i}">${markTerm(s, term, cls)}</span><span class="slen">${n}자 · ${calcBytes(s.trim())}B</span></div>`;
+    const inner = spacing ? markSpacing(s) : markTerm(s, term, cls);
+    return `<div class="${scls}"><span class="sno">${visible}</span><span class="stx" contenteditable="true" data-pi="${i}">${inner}</span><span class="slen">${n}자 · ${calcBytes(s.trim())}B</span></div>`;
   }).join('');
   if (!visible) { $('#sentView').innerHTML = '<div class="empty">본문이 비어 있음</div>'; return; }
   $('#sentView').innerHTML = head + rows;
   const clr = $('#sentView').querySelector('.hl-clear');
-  if (clr) clr.onclick = () => { state.hlTerm = null; if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); } renderSentences($('#body').value); };
+  if (clr) clr.onclick = () => { state.hlTerm = null; state.hlSpacing = false; if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); } renderSentences($('#body').value); };
   $('#sentView').querySelectorAll('.stx[contenteditable]').forEach((el) => {
     el.addEventListener('focus', () => { const pi = Number(el.dataset.pi); el.textContent = state.sentParts[pi] != null ? state.sentParts[pi] : el.innerText; });
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak'); } });
@@ -483,7 +492,8 @@ function commitSentence(el) {
   if (!state.sentParts || pi >= state.sentParts.length) return;
   const next = el.innerText.replace(/\r\n?/g, '\n');
   if (next === state.sentParts[pi]) {
-    if (state.hlTerm) el.innerHTML = markTerm(next, state.hlTerm, state.hlClass || 'hl');
+    if (state.hlSpacing) el.innerHTML = markSpacing(next);
+    else if (state.hlTerm) el.innerHTML = markTerm(next, state.hlTerm, state.hlClass || 'hl');
     return;
   }
   state.sentParts[pi] = next;
@@ -495,11 +505,12 @@ function commitSentence(el) {
   const reparsed = sentenceParts(body);
   const same = reparsed.length === state.sentParts.length && reparsed.every((p, i) => p === state.sentParts[i]);
   if (!same) { renderSentences(body); }
+  else if (state.hlSpacing) { el.innerHTML = markSpacing(next); }
   else if (state.hlTerm) { el.innerHTML = markTerm(next, state.hlTerm, state.hlClass || 'hl'); }
 }
 
 function showEdit() {
-  state.sentMode = false; state.hlMode = false; state.hlTerm = null;
+  state.sentMode = false; state.hlMode = false; state.hlTerm = null; state.hlSpacing = false;
   if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); }
   $('#body').hidden = false; $('#sentView').hidden = true;
   $('#sentToggle').classList.remove('sel'); $('#sentToggle').textContent = '문장별 보기';
@@ -519,7 +530,8 @@ function dejoinBody() {
   if (after === before) { showToast('정리할 줄바꿈·이중 공백이 없습니다'); return; }
   $('#body').value = after;
   state.dirty = true;
-  if (state.sentMode || state.hlMode) showEdit();
+  state.hlTerm = null; state.hlSpacing = false; state.spellHlIdx = null; markSpellActive();
+  if (state.hlMode) showEdit();
   renderAssist();
   showToast('✓ 줄바꿈·이중 공백 정리됨');
 }
@@ -527,7 +539,7 @@ function dejoinBody() {
 function highlightTerm(term, markClass) {
   if (!term) return;
   const mc = markClass || 'hl';
-  if (state.sentMode) { state.hlTerm = term; state.hlClass = mc; renderSentences($('#body').value); return; }
+  if (state.sentMode) { state.hlTerm = term; state.hlClass = mc; state.hlSpacing = false; renderSentences($('#body').value); return; }
   state.hlMode = true; state.sentMode = false; state.hlTerm = term; state.hlClass = mc;
   const text = $('#body').value;
   const html = esc(text).split(esc(term)).join(`<mark class="${mc}">${esc(term)}</mark>`);
@@ -558,7 +570,7 @@ function renderFreq(text) {
       + top.map(([w, n]) => `<span class="chip clickable ${n >= 4 ? 'hot' : ''}" data-term="${esc(w)}">${esc(w)} ${n}</span>`).join('') + '</div>';
   }
   $('#freqPanel').innerHTML = html || '<div class="empty">반복 표현 없음</div>';
-  $('#freqPanel').querySelectorAll('.chip.clickable').forEach((c) => { c.onclick = () => { if (state.hlMode && state.hlTerm === c.dataset.term) { showEdit(); return; } highlightTerm(c.dataset.term); }; });
+  $('#freqPanel').querySelectorAll('.chip.clickable').forEach((c) => { c.onclick = () => { if (state.hlMode && state.hlTerm === c.dataset.term) { showEdit(); return; } if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); } highlightTerm(c.dataset.term); }; });
 }
 
 const SPELL_HELP_MAX = 80;
@@ -566,7 +578,10 @@ const SPELL_HELP_MAX = 80;
 async function runSpell() {
   const text = $('#body').value.trim();
   if (!text) { $('#spellPanel').innerHTML = '<div class="empty">본문이 비어 있음</div>'; return; }
-  if (state.spellHlIdx != null) showEdit();
+  if (state.spellHlIdx != null) {
+    if (state.sentMode) { state.hlTerm = null; state.hlSpacing = false; renderSentences($('#body').value); }
+    else showEdit();
+  }
   state.spellErrors = []; state.spellHlIdx = null;
   const sp = ($('#body').value.match(/ {2,}/g) || []).length;
   const spacingItem = sp ? { kind: 'spacing', orig: `이중 공백 ${sp}곳`, suggest: ['한 칸으로'], choice: '한 칸으로', help: '연속으로 들어간 공백을 한 칸으로 정리합니다.', helpOpen: false } : null;
@@ -662,12 +677,13 @@ function highlightSpacing() {
 function toggleSpellHighlight(idx) {
   const e = state.spellErrors[idx];
   if (!e) return;
-  if (state.spellHlIdx === idx) { showEdit(); return; }
+  if (state.spellHlIdx === idx && !state.sentMode) { showEdit(); return; }
   const text = $('#body').value;
   if (e.kind === 'spacing') {
     if (!/ {2,}/.test(text)) { showToast('본문에 이중 공백이 없음 — 검사 후 본문이 바뀌었을 수 있어요'); return; }
     state.spellHlIdx = idx;
-    highlightSpacing();
+    if (state.sentMode) { state.hlSpacing = true; state.hlTerm = null; renderSentences(text); }
+    else highlightSpacing();
     markSpellActive();
     return;
   }
@@ -709,7 +725,9 @@ function applySpell(idx) {
     state.spellUndo = { idx, text: cur0 };
     const next0 = cur0.replace(/ {2,}/g, ' ');
     $('#body').value = next0; state.spellBaseText = next0; state.dirty = true;
-    renderAssist(); removeSpellRow(idx); showOverlayPlain();
+    state.hlTerm = null; state.hlSpacing = false; state.spellHlIdx = null;
+    renderAssist(); removeSpellRow(idx);
+    if (!state.sentMode) showOverlayPlain();
     showToastUndo('✓ 이중 공백 정리됨 (저장 시 기록)');
     return;
   }
@@ -727,9 +745,10 @@ function applySpell(idx) {
   $('#body').value = next;
   state.spellBaseText = next;
   state.dirty = true;
+  state.hlTerm = null; state.hlSpacing = false; state.spellHlIdx = null;
   renderAssist();
   removeSpellRow(idx);
-  showAppliedOverlay(cand);
+  if (!state.sentMode) showAppliedOverlay(cand);
   showToastUndo(`✓ '${e.orig}' → '${cand}' 반영 (저장 시 기록)`);
 }
 
@@ -745,7 +764,10 @@ function showToastUndo(msg) {
       if (!state.spellUndo) return;
       $('#body').value = state.spellUndo.text;
       state.spellBaseText = state.spellUndo.text;
-      state.dirty = true; showEdit(); renderAssist();
+      state.dirty = true;
+      state.hlTerm = null; state.hlSpacing = false; state.spellHlIdx = null;
+      if (!state.sentMode) showEdit();
+      renderAssist();
       state.spellUndo = null;
       showToast('되돌렸습니다');
     };
@@ -765,7 +787,11 @@ async function dismissSpell(idx) {
   const wasHl = state.spellHlIdx === idx;
   state.spellIgnore.add(e.orig);
   removeSpellRow(idx);
-  if (wasHl) showOverlayPlain();
+  if (wasHl) {
+    state.hlTerm = null; state.hlSpacing = false; state.spellHlIdx = null;
+    if (state.sentMode) renderSentences($('#body').value);
+    else showOverlayPlain();
+  }
   try {
     const list = await j('/api/spell-ignore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ word: e.orig }) });
     state.spellIgnore = new Set(list);
