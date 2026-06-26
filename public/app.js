@@ -128,6 +128,9 @@ async function boot() {
   $('#helpPrev').onclick = () => helpNav(-1);
   $('#helpNext').onclick = () => helpNav(1);
   $('#helpModal').onclick = (e) => { if (e.target === $('#helpModal')) closeHelp(); };
+  $('#updNotes').onclick = openNotes;
+  $('#notesClose').onclick = closeNotes;
+  $('#notesModal').onclick = (e) => { if (e.target === $('#notesModal')) closeNotes(); };
   $('#nextBtn').onclick = gotoNextUnwritten;
   $('#sentToggle').onclick = toggleSentMode;
   $('#dejoinBtn').onclick = dejoinBody;
@@ -998,7 +1001,6 @@ function initUpdater() {
   $('#updCheckBtn').onclick = checkUpdate;
   if (!window.updater) return;
   $('#updRestart').onclick = () => window.updater.restart();
-  $('#updNotes').onclick = () => openExternal(REPO_URL + '/releases');
   $('#updClose').onclick = () => { $('#updBanner').hidden = true; };
   window.updater.onAvailable((d) => { state.updChecking = false; showUpd(`새 버전 ${d.version || ''} 발견 — 다운로드 준비 중…`, 0, false); setUpdMsg(`업데이트가 있습니다 (${d.version || ''}) — 받는 중…`); });
   window.updater.onProgress((d) => showUpd(`업데이트 다운로드 중… ${Math.round(d.percent || 0)}%`, d.percent || 0, false));
@@ -1006,6 +1008,43 @@ function initUpdater() {
   window.updater.onNone(() => { state.updChecking = false; setUpdMsg('최신 버전입니다 ✓'); });
   window.updater.onError(() => { state.updChecking = false; setUpdMsg('확인 실패 — 인터넷을 확인하세요'); });
 }
+
+function mdLite(src) {
+  const lines = String(src || '').replace(/\r\n?/g, '\n').split('\n');
+  const inline = (t) => esc(t).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  let html = '', inList = false;
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    const li = line.match(/^\s*[-*]\s+(.*)$/);
+    if (li) { if (!inList) { html += '<ul>'; inList = true; } html += `<li>${inline(li[1])}</li>`; continue; }
+    if (inList) { html += '</ul>'; inList = false; }
+    const h = line.match(/^(#{1,3})\s+(.*)$/);
+    if (h) { html += `<h4>${inline(h[2])}</h4>`; continue; }
+    if (line.trim()) html += `<p>${inline(line)}</p>`;
+  }
+  if (inList) html += '</ul>';
+  return html || '<p class="muted">(내용 없음)</p>';
+}
+
+async function openNotes() {
+  const m = $('#notesModal'); const b = $('#notesBody');
+  b.innerHTML = '<div class="empty">불러오는 중…</div>';
+  m.hidden = false;
+  try {
+    const r = await fetch('/api/release-notes');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '오류');
+    if (!Array.isArray(d) || !d.length) { b.innerHTML = '<div class="empty">표시할 변경 내용이 없습니다</div>'; return; }
+    b.innerHTML = d.map((rel) => {
+      const date = rel.date ? rel.date.slice(0, 10) : '';
+      return `<section class="notes-rel"><div class="notes-rel-head"><b>${esc(rel.version || rel.name || '')}</b><span class="notes-date">${esc(date)}</span></div><div class="notes-md">${mdLite(rel.body)}</div></section>`;
+    }).join('');
+  } catch (e) {
+    b.innerHTML = '<div class="warn-item err"><span class="ico">⚠</span><span>변경 내용을 불러오지 못했습니다 — 인터넷 연결을 확인하세요</span></div>';
+  }
+}
+
+function closeNotes() { $('#notesModal').hidden = true; }
 
 async function exportBackup() {
   const pw = $('#bakExpPw').value;
@@ -1096,6 +1135,7 @@ async function saveIfDirty() {
 
 function onKey(e) {
   if (e.key === 'Escape') {
+    if (!$('#notesModal').hidden) { closeNotes(); return; }
     if (!$('#histModal').hidden) { closeHistory(); return; }
     if (!$('#helpModal').hidden) { closeHelp(); return; }
     if (!$('#fbModal').hidden) { closeFb(); return; }

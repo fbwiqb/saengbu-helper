@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const https = require('https');
 const { calcBytes, evaluate } = require('./bytes');
 const { loadForbidden, scan } = require('./forbidden');
 const { extractBooks } = require('./books');
@@ -50,6 +51,24 @@ function createApp(db) {
     } catch (e) {
       res.status(400).json({ error: '데스크톱 앱에서만 열 수 있습니다', detail: String(e.message || e) });
     }
+  });
+
+  app.get('/api/release-notes', (_req, res) => {
+    const opts = { hostname: 'api.github.com', path: '/repos/fbwiqb/saengbu-helper/releases?per_page=15', headers: { 'User-Agent': 'saengbu-helper', Accept: 'application/vnd.github+json' } };
+    const r = https.get(opts, (resp) => {
+      const chunks = [];
+      resp.on('data', (c) => chunks.push(c));
+      resp.on('end', () => {
+        if (resp.statusCode >= 400) { res.status(502).json({ error: 'GitHub 응답 오류 ' + resp.statusCode }); return; }
+        try {
+          const arr = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          const clean = (s) => String(s || '').replace(new RegExp(String.fromCharCode(0xFEFF), 'g'), '').replace(/﻿/g, '').replace(/﻿/g, '').replace(/﻿/g, '').replace(/^[ \t]*Co-Authored-By:.*$/gim, '').replace(/\s+$/, '');
+          res.json((Array.isArray(arr) ? arr : []).filter((x) => !x.draft).map((x) => ({ version: x.tag_name || '', name: x.name || '', date: x.published_at || '', body: clean(x.body) })));
+        } catch (e) { res.status(502).json({ error: '응답 해석 실패' }); }
+      });
+    });
+    r.on('error', (e) => res.status(502).json({ error: '연결 실패', detail: String(e.message || e) }));
+    r.setTimeout(15000, () => r.destroy(new Error('timeout')));
   });
 
   app.post('/api/reset', (req, res) => {

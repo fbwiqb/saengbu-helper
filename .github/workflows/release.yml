@@ -20,3 +20,8 @@ jobs:
       - run: npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set release notes from commit message
+        shell: bash
+        run: gh release edit "${{ github.ref_name }}" --notes "$(git log -1 --pretty=%B HEAD)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

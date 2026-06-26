@@ -449,6 +449,17 @@ mark.hl.spell-fixed { background: var(--green-bg); color: var(--green); box-shad
 .modal-box { background: var(--surface); border-radius: var(--radius); box-shadow: 0 20px 60px rgba(40,34,28,.32); width: min(720px, 100%); max-height: 84vh; display: flex; flex-direction: column; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--line); }
 .modal-head h3 { margin: 0; font-size: 16px; }
+.notes-body { overflow-y: auto; padding: 8px 18px 16px; max-height: 70vh; }
+.notes-rel { padding: 12px 0; border-bottom: 1px dashed var(--line-soft); }
+.notes-rel:last-child { border-bottom: none; }
+.notes-rel-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.notes-rel-head b { font-size: 15px; color: var(--accent-ink); }
+.notes-date { color: var(--ink-faint); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
+.notes-md h4 { margin: 8px 0 4px; font-size: 13.5px; }
+.notes-md ul { margin: 4px 0; padding-left: 18px; }
+.notes-md li { font-size: 13.5px; line-height: 1.7; }
+.notes-md p { font-size: 13.5px; line-height: 1.7; margin: 4px 0; color: var(--ink-soft); }
+.notes-md code { background: var(--surface-2); padding: 0 3px; border-radius: 4px; font-size: 12.5px; }
 .help-box { width: min(640px, 100%); }
 .help-body { overflow-y: auto; padding: 20px 24px; line-height: 1.85; font-size: 15.5px; min-height: 320px; max-height: 62vh; }
 .help-page h4 { margin: 0 0 14px; font-size: 20px; color: var(--accent-ink); }
