@@ -9,7 +9,8 @@
     "electron": "electron .",
     "test": "node --test",
     "cli": "node cli/saengbu-cli.js",
-    "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
+    "build:appx": "electron-builder --win appx --x64"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
@@ -24,6 +25,9 @@
   "build": {
     "appId": "com.cnsa.saengbuhelper",
     "productName": "생기부 입력 도우미",
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
     "files": [
       "main.js",
       "preload.js",
@@ -36,6 +40,15 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
+    },
+    "appx": {
+      "applicationId": "SaengbuHelper",
+      "identityName": "99F5CD14.3540457B60B11",
+      "publisher": "CN=A78B1375-FC9D-4AD6-90B5-8232DA729209",
+      "publisherDisplayName": "신도경",
+      "displayName": "생기부 입력 도우미",
+      "backgroundColor": "transparent",
+      "languages": ["ko-KR"]
     },
     "nsis": {
       "oneClick": false,
