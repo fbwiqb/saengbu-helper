@@ -1185,9 +1185,14 @@ function onKey(e) {
 
 async function renderDash() {
   const d = await j('/api/dashboard?group=' + encodeURIComponent(state.group || ''));
+  let written = 0, target = 0;
+  for (const r of d.rows) for (const c of r.cells) { written += (c.bytes || 0); target += (c.limit || 0); }
+  const bytePct = target ? Math.round((written / target) * 1000) / 10 : 0;
+  const nf = (n) => n.toLocaleString('ko-KR');
   $('#dashProg').innerHTML =
     `<div class="progbar"><div class="fill" style="width:${d.completion}%"></div></div>
-     <div class="summary">완료율 <b>${d.completion}%</b> · 완료 <b>${d.summary['완료']}</b> · 검증 <b>${d.summary['검증']}</b> · 초안 <b>${d.summary['초안']}</b> · 미작성 <b>${d.summary['미작성']}</b></div>`;
+     <div class="summary">완료율 <b>${d.completion}%</b> · 완료 <b>${d.summary['완료']}</b> · 검증 <b>${d.summary['검증']}</b> · 초안 <b>${d.summary['초안']}</b> · 미작성 <b>${d.summary['미작성']}</b></div>
+     <div class="summary bytesum">✍ 작성 <b>${nf(written)} B</b> / 목표 <b>${nf(target)} B</b> <span class="bytepct">(${bytePct}%)</span></div>`;
   const filter = $('#dashFilter').value;
   let areaSel = state.dashArea || '';
   if (areaSel && !d.areas.includes(areaSel)) areaSel = '';
@@ -1286,7 +1291,10 @@ async function fetchAllUnits() {
       subj.push(u);
     }
   }
-  return [...Object.values(damim), ...subj];
+  const all = [...Object.values(damim), ...subj];
+  const used = new Set();
+  for (const u of all) u.sheet = xlSheetName(u.sheetName, used);
+  return all;
 }
 
 function xlSheetName(name, used) {
@@ -1329,12 +1337,11 @@ function runExport() {
   const picked = [...$('#exportUnits').querySelectorAll('.export-chip.on')].map((c) => state.exportUnits[Number(c.dataset.idx)]);
   if (!picked.length) { showToast('내보낼 단위를 하나 이상 고르세요'); return; }
   const wb = XLSX.utils.book_new();
-  const used = new Set();
   for (const u of picked) {
     const aoa = [['학번', '이름', '본문'], ...u.rows.map((r) => [r.hakbun, r.name, r.body])];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 11 }, { wch: 10 }, { wch: 80 }];
-    XLSX.utils.book_append_sheet(wb, ws, xlSheetName(u.sheetName, used));
+    XLSX.utils.book_append_sheet(wb, ws, u.sheet);
   }
   XLSX.writeFile(wb, '생기부_전체.xlsx');
   closeExport();
@@ -1345,13 +1352,11 @@ async function importDash(file) {
   showToast('업로드 파일 분석 중…');
   let units;
   try { units = await fetchAllUnits(); } catch (e) { showToast('현재 데이터를 불러오지 못했습니다'); return; }
-  const used = new Set();
   const bySheet = {};
   for (const u of units) {
-    const sn = xlSheetName(u.sheetName, used);
     const idx = {};
     for (const r of u.rows) idx[String(r.hakbun)] = { body: r.body, status: r.status };
-    bySheet[sn] = { area: u.area, subject: u.subject, idx };
+    bySheet[u.sheet] = { area: u.area, subject: u.subject, idx };
   }
   let wb;
   try { wb = XLSX.read(await file.arrayBuffer(), { type: 'array' }); } catch (e) { showToast('엑셀을 읽지 못했습니다'); return; }
