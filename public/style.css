@@ -571,6 +571,17 @@ mark.hl.spell-fixed { background: var(--green-bg); color: var(--green); box-shad
 .up-grp-head { font-size: 14px; margin-bottom: 4px; }
 .up-students { font-size: 12.5px; line-height: 1.6; }
 
+.export-body { padding: 16px 18px; overflow-y: auto; max-height: 62vh; }
+.export-note { background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px; font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+.export-note .export-warn { color: var(--red); font-weight: 600; }
+.export-units { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.export-cat { display: flex; align-items: flex-start; gap: 10px; }
+.export-cat-lab { flex: 0 0 52px; font-weight: 700; font-size: 13px; color: var(--accent-ink); padding-top: 6px; }
+.export-chips { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; }
+.export-chip { padding: 6px 14px; font-size: 13px; font-weight: 600; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer; transition: all .12s; }
+.export-chip.on { background: var(--accent); color: #fbf7ef; border-color: var(--accent); }
+.export-chip::before { content: "○ "; }
+.export-chip.on::before { content: "✓ "; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #d8d0c2; border-radius: 99px; border: 2px solid var(--paper); }
 ::-webkit-scrollbar-thumb:hover { background: #c7bdac; }

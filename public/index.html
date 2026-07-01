@@ -62,7 +62,9 @@
           <option value="완료">완료</option>
         </select>
         <span class="spacer"></span>
-        <button id="dashExport" class="btn-ghost" type="button">엑셀 내보내기</button>
+        <button id="dashExport" class="btn-ghost" type="button" title="현재 내용을 엑셀로 저장 — 이 파일이 업로드용 템플릿입니다">엑셀 내보내기 (업로드 템플릿)</button>
+        <button id="dashImport" class="btn-ghost" type="button" title="내보낸 엑셀에 본문을 채워 올리면 일괄 저장됩니다">📥 엑셀 업로드</button>
+        <input id="dashImportFile" type="file" accept=".xlsx,.xls" hidden />
       </div>
       <div id="dashTable"></div>
     </section>
@@ -302,6 +304,30 @@
         <button id="notesClose" class="btn-ghost">닫기</button>
       </div>
       <div id="notesBody" class="notes-body"></div>
+    </div>
+  </div>
+
+  <div id="exportModal" class="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>엑셀 내보내기</h3>
+        <button id="exportClose" class="btn-ghost">닫기</button>
+      </div>
+      <div class="export-body">
+        <div class="export-note">
+          <b>ⓘ 이 엑셀이 곧 「일괄 업로드 템플릿」입니다.</b> 본문 칸만 채워서 다시 <b>[📥 엑셀 업로드]</b>하면 한 번에 저장됩니다.<br>
+          <span class="export-warn">⚠ 시트 이름은 바꾸지 마세요 — 영역·분반을 판별하는 기준입니다.</span>
+        </div>
+        <p class="muted">내보낼 단위를 고르세요. 켠 것마다 <b>별도 시트</b>로 저장됩니다.</p>
+        <div id="exportUnits" class="export-units"></div>
+      </div>
+      <div class="help-nav">
+        <span class="muted" id="exportCount"></span>
+        <span class="prompt-btns">
+          <button id="exportCancel" class="btn-ghost" type="button">취소</button>
+          <button id="exportGo" class="btn-primary" type="button">⬇ 내려받기</button>
+        </span>
+      </div>
     </div>
   </div>
 

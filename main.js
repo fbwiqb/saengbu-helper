@@ -1,6 +1,8 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, session } = require('electron');
 const path = require('path');
 const net = require('net');
+
+app.commandLine.appendSwitch('disable-features', 'WinrtGeolocationImplementation,WinrtSensorsImplementation');
 
 const isDev = !app.isPackaged;
 let mainWin = null;
@@ -89,6 +91,8 @@ function setupAutoUpdate() {
 }
 
 app.whenReady().then(async () => {
+  session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm !== 'geolocation'));
+  session.defaultSession.setPermissionCheckHandler((_wc, perm) => perm !== 'geolocation');
   await createWindow();
   if (!isDev) setupAutoUpdate();
   app.on('activate', () => {

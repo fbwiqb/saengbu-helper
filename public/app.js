@@ -138,7 +138,13 @@ async function boot() {
   $('#vDash').onclick = () => setView('dash');
   $('#vSettings').onclick = () => setView('settings');
   $('#dashFilter').onchange = renderDash;
-  $('#dashExport').onclick = exportDash;
+  $('#dashExport').onclick = openExport;
+  $('#exportClose').onclick = closeExport;
+  $('#exportCancel').onclick = closeExport;
+  $('#exportModal').onclick = (e) => { if (e.target === $('#exportModal')) closeExport(); };
+  $('#exportGo').onclick = runExport;
+  $('#dashImport').onclick = () => $('#dashImportFile').click();
+  $('#dashImportFile').onchange = (e) => { const f = e.target.files[0]; if (f) importDash(f); e.target.value = ''; };
   $('#cfgSave').onclick = saveConfig;
   document.querySelectorAll('.settab').forEach((b) => { b.onclick = () => selectSetPane(b.dataset.t); });
   $('#tmplLink').onclick = downloadTemplate;
@@ -908,8 +914,9 @@ const HELP_PAGES = [
     <p class="help-note">단축키 — 저장 <b>Ctrl+S</b> · 다음 미작성 <b>Ctrl+→</b> · 공통문구 <b>Ctrl+1~9</b></p>` },
   { t: '5단계 · 대시보드 · 복사 · 백업', h: `
     <ul>
-      <li>📊 <b>대시보드</b> — 반 전체·세특 분반별 진행률을 한눈에, 작성 내용을 <b>엑셀로 내보내기</b>.</li>
-      <li>📋 <b>영역별 복사</b> — 대시보드 상단 <b>[자율][진로][행특]</b> 버튼을 누르면 그 영역만 학생별 한 줄씩 떠서, 복사 버튼으로 내려가며 NEIS에 붙여넣기. (창체는 엑셀 업로드가 안 되니 이게 빨라요.)</li>
+      <li>📊 <b>대시보드</b> — 반 전체·세특 분반별 진행률을 한눈에 봅니다.</li>
+      <li>📤 <b>엑셀 내보내기 → 업로드(일괄 입력)</b> — <b>[엑셀 내보내기]</b>를 누르면 단위 선택 창이 떠요. 켠 단위마다 <b>시트가 하나씩</b> 만들어집니다(자율/진로/행특, 세특은 분반별). 이 엑셀이 곧 <b>템플릿</b> — 본문 칸을 채워 <b>[📥 엑셀 업로드]</b>하면 학번·시트이름으로 찾아 <b>한 번에 저장</b>됩니다. (⚠ 시트 이름은 바꾸지 마세요. 빈 칸·안 바뀐 칸은 건너뜁니다.)</li>
+      <li>📋 <b>영역별 복사</b> — 대시보드 상단 <b>[자율][진로][행특]</b> 버튼을 누르면 그 영역만 학생별 한 줄씩 떠서, 복사 버튼으로 내려가며 NEIS에 붙여넣기.</li>
       <li>💾 <b>암호화 백업</b> — 설정 ▸ 데이터·백업에서 비밀번호로 내보내, 다른 PC에서 같은 비밀번호로 불러오면 그대로 이어집니다. (비밀번호를 잊으면 복원 불가)</li>
       <li>🗑️ <b>데이터 삭제</b> — 새 학년엔 ‘생기부 데이터 삭제하기’로 명단·그룹·기록을 한 번에 초기화. <b>되돌릴 수 없으니 먼저 백업</b>하세요(영역·바이트 설정은 유지).</li>
     </ul>` },
@@ -1161,6 +1168,7 @@ async function saveIfDirty() {
 
 function onKey(e) {
   if (e.key === 'Escape') {
+    if (!$('#exportModal').hidden) { closeExport(); return; }
     if (!$('#notesModal').hidden) { closeNotes(); return; }
     if (!$('#histModal').hidden) { closeHistory(); return; }
     if (!$('#helpModal').hidden) { closeHelp(); return; }
@@ -1253,27 +1261,141 @@ async function openWrite(hakbun, group, area) {
   if (area) selectArea(area);
 }
 
-async function exportDash() {
-  const group = state.group;
-  if (!group) { showToast('그룹을 먼저 선택하세요'); return; }
-  const d = await j('/api/dashboard?group=' + encodeURIComponent(group));
-  if (!d.rows.length) { showToast('내보낼 학생이 없습니다'); return; }
-  const head = ['학번', '이름', ...d.areas];
-  const aoa = [head];
-  for (const r of d.rows) {
-    const row = [r.hakbun, r.name];
-    for (const area of d.areas) {
-      const c = r.cells.find((x) => x.area === area);
-      row.push(c ? (c.body || '') : '');
+async function fetchAllUnits() {
+  const groups = await j('/api/groups');
+  const damim = {};
+  const subj = [];
+  for (const g of groups) {
+    const d = await j('/api/dashboard?group=' + encodeURIComponent(g.group_tag));
+    if (!d.rows.length) continue;
+    if (g.category === '담임') {
+      for (const area of d.areas) {
+        const u = damim[area] || (damim[area] = { category: '담임', label: area, sheetName: area, area, subject: '', rows: [] });
+        for (const r of d.rows) {
+          const c = r.cells.find((x) => x.area === area) || {};
+          u.rows.push({ hakbun: r.hakbun, name: r.name, body: c.body || '', status: c.status || '미작성' });
+        }
+      }
+    } else {
+      const area = d.areas[0] || g.category;
+      const u = { category: g.category, label: g.group_tag, sheetName: g.group_tag, area, subject: g.group_tag, rows: [] };
+      for (const r of d.rows) {
+        const c = r.cells.find((x) => x.area === area) || {};
+        u.rows.push({ hakbun: r.hakbun, name: r.name, body: c.body || '', status: c.status || '미작성' });
+      }
+      subj.push(u);
     }
-    aoa.push(row);
   }
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{ wch: 11 }, { wch: 10 }, ...d.areas.map(() => ({ wch: 60 }))];
+  return [...Object.values(damim), ...subj];
+}
+
+function xlSheetName(name, used) {
+  let s = String(name).replace(/[[\]:*?/\\]/g, ' ').slice(0, 31).trim() || '시트';
+  const base = s; let i = 2;
+  while (used.has(s)) { const suf = ' ' + i; s = base.slice(0, 31 - suf.length) + suf; i++; }
+  used.add(s);
+  return s;
+}
+
+async function openExport() {
+  const box = $('#exportUnits');
+  box.innerHTML = '<div class="empty">불러오는 중…</div>';
+  $('#exportModal').hidden = false;
+  let units;
+  try { units = await fetchAllUnits(); } catch (e) { box.innerHTML = '<div class="warn-item err"><span class="ico">⚠</span><span>불러오기 실패</span></div>'; return; }
+  state.exportUnits = units;
+  if (!units.length) { box.innerHTML = '<div class="empty">내보낼 학생이 없습니다. 먼저 명단을 등록하세요.</div>'; $('#exportGo').disabled = true; return; }
+  $('#exportGo').disabled = false;
+  const cats = [];
+  for (const u of units) { if (!cats.includes(u.category)) cats.push(u.category); }
+  box.innerHTML = cats.map((cat) => {
+    const chips = units.map((u, idx) => u.category === cat
+      ? `<button class="export-chip on" type="button" data-idx="${idx}">${esc(u.label)}</button>` : '').join('');
+    return `<div class="export-cat"><span class="export-cat-lab">${esc(cat)}</span><div class="export-chips">${chips}</div></div>`;
+  }).join('');
+  box.querySelectorAll('.export-chip').forEach((c) => { c.onclick = () => { c.classList.toggle('on'); updateExportCount(); }; });
+  updateExportCount();
+}
+
+function updateExportCount() {
+  const on = $('#exportUnits').querySelectorAll('.export-chip.on').length;
+  $('#exportCount').textContent = `${on}개 시트`;
+  $('#exportGo').disabled = on === 0;
+}
+
+function closeExport() { $('#exportModal').hidden = true; }
+
+function runExport() {
+  const picked = [...$('#exportUnits').querySelectorAll('.export-chip.on')].map((c) => state.exportUnits[Number(c.dataset.idx)]);
+  if (!picked.length) { showToast('내보낼 단위를 하나 이상 고르세요'); return; }
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '생기부');
-  XLSX.writeFile(wb, `생기부_${group}.xlsx`);
-  showToast(`✓ ${d.rows.length}명 엑셀로 내보냈습니다`);
+  const used = new Set();
+  for (const u of picked) {
+    const aoa = [['학번', '이름', '본문'], ...u.rows.map((r) => [r.hakbun, r.name, r.body])];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 11 }, { wch: 10 }, { wch: 80 }];
+    XLSX.utils.book_append_sheet(wb, ws, xlSheetName(u.sheetName, used));
+  }
+  XLSX.writeFile(wb, '생기부_전체.xlsx');
+  closeExport();
+  showToast(`✓ ${picked.length}개 시트로 내보냈습니다`);
+}
+
+async function importDash(file) {
+  showToast('업로드 파일 분석 중…');
+  let units;
+  try { units = await fetchAllUnits(); } catch (e) { showToast('현재 데이터를 불러오지 못했습니다'); return; }
+  const used = new Set();
+  const bySheet = {};
+  for (const u of units) {
+    const sn = xlSheetName(u.sheetName, used);
+    const idx = {};
+    for (const r of u.rows) idx[String(r.hakbun)] = { body: r.body, status: r.status };
+    bySheet[sn] = { area: u.area, subject: u.subject, idx };
+  }
+  let wb;
+  try { wb = XLSX.read(await file.arrayBuffer(), { type: 'array' }); } catch (e) { showToast('엑셀을 읽지 못했습니다'); return; }
+  const jobs = [];
+  const skip = { sheet: 0, hakbun: 0, empty: 0, same: 0 };
+  for (const sn of wb.SheetNames) {
+    const target = bySheet[sn];
+    if (!target) { skip.sheet++; continue; }
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, blankrows: false });
+    if (!aoa.length) continue;
+    const head = aoa[0].map((h) => String(h || '').trim());
+    const hCol = head.indexOf('학번');
+    const bCol = head.indexOf('본문');
+    if (hCol < 0 || bCol < 0) { skip.sheet++; continue; }
+    for (let i = 1; i < aoa.length; i++) {
+      const hak = String(aoa[i][hCol] == null ? '' : aoa[i][hCol]).trim();
+      if (!hak) continue;
+      const body = String(aoa[i][bCol] == null ? '' : aoa[i][bCol]);
+      const cur = target.idx[hak];
+      if (!cur) { skip.hakbun++; continue; }
+      if (!body.trim()) { skip.empty++; continue; }
+      if (body === cur.body) { skip.same++; continue; }
+      const status = (!cur.status || cur.status === '미작성') ? '초안' : cur.status;
+      jobs.push({ hakbun: hak, area: target.area, subject: target.subject, body, status });
+    }
+  }
+  if (!jobs.length) {
+    showToast(`저장할 변경이 없습니다 (그대로 ${skip.same} · 빈칸 ${skip.empty} · 없는학번 ${skip.hakbun})`);
+    return;
+  }
+  const names = new Set(jobs.map((x) => x.hakbun));
+  if (!confirm(`${names.size}명 · ${jobs.length}건을 저장합니다.\n(변경된 칸만 반영 — 빈칸/동일 내용은 건너뜀)\n계속할까요?`)) return;
+  let ok = 0, fail = 0;
+  for (const job of jobs) {
+    try {
+      const r = await fetch(`/api/records/${job.hakbun}/${encodeURIComponent(job.area)}?subject=${encodeURIComponent(job.subject)}`,
+        { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: job.body, status: job.status }) });
+      if (r.ok) ok++; else fail++;
+    } catch (e) { fail++; }
+    if ((ok + fail) % 20 === 0) showToast(`저장 중… ${ok + fail}/${jobs.length}`);
+  }
+  await loadList();
+  if (state.view === 'dash') await renderDash();
+  showToast(`✓ ${ok}건 저장 완료${fail ? ` · 실패 ${fail}` : ''} · 건너뜀(그대로 ${skip.same}·빈칸 ${skip.empty}·없는학번 ${skip.hakbun})`);
 }
 
 
