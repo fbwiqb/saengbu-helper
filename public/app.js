@@ -1,6 +1,6 @@
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortUnwritten: false, hlMode: false, hlTerm: null, hlClass: 'hl', hlSpacing: false, sentParts: [], spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null };
+let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortUnwritten: false, hlMode: false, hlTerm: null, hlClass: 'hl', hlSpacing: false, sentParts: [], spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null, forbid: [], forbidHlIdx: null, forbidBaseText: '' };
 let dashBodies = {};
 
 const AREA_LABEL = {
@@ -16,7 +16,8 @@ const CATEGORY_AREAS = {
 };
 const BYTE_PRESETS = [1500, 900, 750];
 const PER_SUBJECT = new Set(['세특', '동아리', '기타']);
-const CONNECTIVES = ['이를 통해', '이러한', '또한', '뿐만 아니라', '나아가', '한편', '그리하여', '따라서', '그러므로', '이로써', '이에', '특히', '아울러', '더불어', '바탕으로', '계기로', '통하여', '결과적으로', '뿐만'];
+const CONNECTIVES = ['이를 통해', '이러한', '또한', '뿐만 아니라', '나아가', '한편', '그리하여', '따라서', '그러므로', '이로써', '이에', '특히', '아울러', '더불어', '바탕으로', '계기로', '통하여', '결과적으로', '뿐만', '주제'];
+const FREQ_WATCH = new Set(['주제']);
 const CONNECTIVE_RE = CONNECTIVES.map((c) => ({ c, re: new RegExp(c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g') }));
 const FREQ_STOP = new Set(['이를', '통해', '통한', '통하여', '대한', '대해', '위한', '위해', '하는', '있는', '되는', '했던', '보는', '같은', '등의', '등을', '으로', '에서', '그리고', '또한', '이러한', '바탕으로', '토대로', '과정', '가운데', '더욱', '매우', '그러한', '이와', '함께', '점을', '모습', '모습을', '모습이', '대하여', '있음', '있었', '하였', '되었', '하고', '으며', '하며']);
 
@@ -89,7 +90,6 @@ function copyArea() { return copyText($('#body').value, state.area, '', activeLi
 
 async function boot() {
   state.config = await j('/api/config');
-  state.forbidden = await j('/api/forbidden');
   try { state.spellIgnore = new Set(await j('/api/spell-ignore')); } catch (e) { state.spellIgnore = new Set(); }
   try { state.phrases = await j('/api/common-phrases'); } catch (e) { state.phrases = []; }
   buildTargets();
@@ -115,10 +115,18 @@ async function boot() {
     const sel = ev.target.closest('.sp-cand');
     if (sel && state.spellErrors[Number(sel.dataset.idx)]) state.spellErrors[Number(sel.dataset.idx)].choice = sel.value;
   });
+  $('#fbdPanel').addEventListener('click', (ev) => {
+    const apply = ev.target.closest('.fbd-apply');
+    if (apply) { applyForbid(Number(apply.dataset.idx)); return; }
+    const dismiss = ev.target.closest('.fbd-dismiss');
+    if (dismiss) { dismissForbid(Number(dismiss.dataset.idx)); return; }
+    const row = ev.target.closest('.fbd-item');
+    if (row) toggleForbidHighlight(Number(row.dataset.idx));
+  });
   $('#saveBtn').onclick = () => saveRecord();
   $('#statusChip').onclick = cycleStatus;
   $('#copyBtn').onclick = copyArea;
-  $('#spellBtn').onclick = runSpell;
+  $('#spellBtn').onclick = () => { runForbidden(); runSpell(); };
   $('#histBtn').onclick = openHistory;
   $('#histClose').onclick = closeHistory;
   $('#histModal').onclick = (e) => { if (e.target === $('#histModal')) closeHistory(); };
@@ -404,10 +412,12 @@ function selectArea(area) {
   $('#body').value = rec.body || '';
   setStatusChip(rec.status || '미작성');
   state.spellErrors = []; state.spellHlIdx = null; state.spellBaseText = ''; state.spellUndo = null;
+  state.forbid = []; state.forbidHlIdx = null; state.forbidBaseText = '';
   showEdit();
   renderAssist();
   renderPhraseButtons();
   $('#spellPanel').innerHTML = '<div class="empty">‘맞춤법’ 버튼을 눌러 점검</div>';
+  $('#fbdPanel').innerHTML = '<div class="empty">‘맞춤법’ 버튼을 누르면 함께 검사</div>';
   state.dirty = false;
   renderTree();
 }
@@ -518,6 +528,7 @@ function commitSentence(el) {
 function showEdit() {
   state.sentMode = false; state.hlMode = false; state.hlTerm = null; state.hlSpacing = false;
   if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); }
+  if (state.forbidHlIdx != null) { state.forbidHlIdx = null; markForbidActive(); }
   $('#body').hidden = false; $('#sentView').hidden = true;
   $('#sentToggle').classList.remove('sel'); $('#sentToggle').textContent = '문장별 보기';
 }
@@ -569,14 +580,14 @@ function renderFreq(text) {
   let html = '';
   if (conn.length) {
     html += '<div class="freq-grp"><div class="ft">연결어·상투어</div>'
-      + conn.map((x) => `<span class="chip clickable ${x.n >= 3 ? 'hot' : ''}" data-term="${esc(x.c)}">${esc(x.c)} ${x.n}</span>`).join('') + '</div>';
+      + conn.map((x) => `<span class="chip clickable ${x.n >= 3 ? 'hot' : ''}${FREQ_WATCH.has(x.c) ? ' watch' : ''}" data-term="${esc(x.c)}">${esc(x.c)} ${x.n}</span>`).join('') + '</div>';
   }
   if (top.length) {
     html += '<div class="freq-grp"><div class="ft">반복 단어</div>'
       + top.map(([w, n]) => `<span class="chip clickable ${n >= 4 ? 'hot' : ''}" data-term="${esc(w)}">${esc(w)} ${n}</span>`).join('') + '</div>';
   }
   $('#freqPanel').innerHTML = html || '<div class="empty">반복 표현 없음</div>';
-  $('#freqPanel').querySelectorAll('.chip.clickable').forEach((c) => { c.onclick = () => { if (state.hlMode && state.hlTerm === c.dataset.term) { showEdit(); return; } if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); } highlightTerm(c.dataset.term); }; });
+  $('#freqPanel').querySelectorAll('.chip.clickable').forEach((c) => { c.onclick = () => { if (state.hlMode && state.hlTerm === c.dataset.term) { showEdit(); return; } if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); } if (state.forbidHlIdx != null) { state.forbidHlIdx = null; markForbidActive(); } highlightTerm(c.dataset.term); }; });
 }
 
 const SPELL_HELP_MAX = 80;
@@ -683,6 +694,7 @@ function highlightSpacing() {
 function toggleSpellHighlight(idx) {
   const e = state.spellErrors[idx];
   if (!e) return;
+  if (state.forbidHlIdx != null) { state.forbidHlIdx = null; markForbidActive(); }
   if (state.spellHlIdx === idx && !state.sentMode) { showEdit(); return; }
   const text = $('#body').value;
   if (e.kind === 'spacing') {
@@ -808,6 +820,90 @@ async function dismissSpell(idx) {
 function removeSpellRow(idx) {
   state.spellErrors[idx] = null;
   renderSpellPanel();
+}
+
+async function runForbidden() {
+  const text = $('#body').value;
+  if (!text.trim()) { $('#fbdPanel').innerHTML = '<div class="empty">본문이 비어 있음</div>'; state.forbid = []; state.forbidHlIdx = null; return; }
+  $('#fbdPanel').innerHTML = '<div class="empty">기재금지 검사 중…</div>';
+  try {
+    const r = await fetch('/api/forbidden-scan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+    const hits = await r.json();
+    if (!r.ok) throw new Error('scan');
+    state.forbid = (hits || []).map((h) => ({ ...h }));
+    state.forbidBaseText = $('#body').value;
+    state.forbidHlIdx = null;
+    renderForbidPanel();
+  } catch (e) {
+    $('#fbdPanel').innerHTML = '<div class="warn-item err"><span class="ico">⚠</span><span>기재금지 검사 실패</span></div>';
+  }
+}
+
+function renderForbidPanel() {
+  const live = state.forbid.filter(Boolean);
+  if (!live.length) {
+    $('#fbdPanel').innerHTML = '<div class="warn-item ok"><span class="ico">●</span><span>기재금지 표현 없음</span></div>';
+    return;
+  }
+  const rows = state.forbid.map((h, idx) => {
+    if (!h) return '';
+    const rep = h.replace ? `<button class="fbd-apply" data-idx="${idx}">→ ${esc(h.replace)}</button>` : '';
+    return `<div class="fbd-item${idx === state.forbidHlIdx ? ' sel' : ''}" data-idx="${idx}">
+      <div class="fbd-top"><span class="fbd-term">🚫 ${esc(h.term)}</span><span class="fbd-cat">${esc(h.cat)}</span></div>
+      <div class="fbd-reason">${esc(h.reason)}</div>
+      <div class="fbd-actions">${rep}<button class="fbd-dismiss" data-idx="${idx}">무시</button></div>
+    </div>`;
+  }).join('');
+  $('#fbdPanel').innerHTML = `<div class="muted spell-count" style="margin-bottom:6px">${live.length}건 · 행 클릭 시 본문 강조</div>${rows}`;
+}
+
+function markForbidActive() {
+  document.querySelectorAll('#fbdPanel .fbd-item').forEach((el) => {
+    el.classList.toggle('sel', Number(el.dataset.idx) === state.forbidHlIdx);
+  });
+}
+
+function toggleForbidHighlight(idx) {
+  const h = state.forbid[idx];
+  if (!h) return;
+  if (state.forbidHlIdx === idx && !state.sentMode) { showEdit(); return; }
+  if (!$('#body').value.includes(h.term)) { showToast('본문에서 찾을 수 없음 — 검사 후 본문이 바뀌었을 수 있어요'); return; }
+  if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); }
+  state.forbidHlIdx = idx;
+  highlightTerm(h.term, 'hl fbd-err');
+  markForbidActive();
+}
+
+function applyForbid(idx) {
+  const h = state.forbid[idx];
+  if (!h || !h.replace) return;
+  const cur = $('#body').value;
+  if (state.forbidBaseText && cur !== state.forbidBaseText) { showToast('본문이 검사 후 수정됨 — 다시 검사해 주세요'); return; }
+  const pos = cur.indexOf(h.term);
+  if (pos < 0) { showToast('본문에서 찾을 수 없음'); return; }
+  state.spellUndo = { idx: -1, text: cur };
+  const next = cur.slice(0, pos) + h.replace + cur.slice(pos + h.term.length);
+  $('#body').value = next; state.forbidBaseText = next; state.dirty = true;
+  state.forbidHlIdx = null;
+  renderAssist();
+  removeForbidRow(idx);
+  if (!state.sentMode) showEdit();
+  showToastUndo(`✓ '${h.term}' → '${h.replace}' 반영 (저장 시 기록)`);
+}
+
+async function dismissForbid(idx) {
+  const h = state.forbid[idx];
+  if (!h) return;
+  const wasHl = state.forbidHlIdx === idx;
+  removeForbidRow(idx);
+  if (wasHl) { state.forbidHlIdx = null; if (state.sentMode) renderSentences($('#body').value); else showEdit(); }
+  try { await fetch('/api/forbidden-ignore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ word: h.term }) }); } catch (e) { /* noop */ }
+  showToast(`'${h.term}' 무시 목록에 추가됨 (이후 검사에서 제외)`);
+}
+
+function removeForbidRow(idx) {
+  state.forbid[idx] = null;
+  renderForbidPanel();
 }
 
 function diffWords(a, b) {

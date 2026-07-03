@@ -2,12 +2,12 @@ const express = require('express');
 const path = require('path');
 const https = require('https');
 const { calcBytes, evaluate } = require('./bytes');
-const { loadForbidden, scan } = require('./forbidden');
+const { loadRules, scan } = require('./forbidden');
 const { extractBooks } = require('./books');
 const backup = require('./backup');
 const db_ = require('./db');
 
-const FORBIDDEN = loadForbidden(path.join(__dirname, '../data/forbidden.json'));
+const RULES = loadRules(path.join(__dirname, '../data/forbidden.json'));
 
 function createApp(db) {
   const app = express();
@@ -79,7 +79,25 @@ function createApp(db) {
     } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
   });
 
-  app.get('/api/forbidden', (_req, res) => res.json(FORBIDDEN));
+  app.get('/api/forbidden', (_req, res) => res.json(RULES));
+
+  const getFbdIgnore = () => {
+    const row = db.prepare('SELECT value FROM app_config WHERE key=?').get('forbidden_ignore');
+    if (!row) return [];
+    try { const a = JSON.parse(row.value); return Array.isArray(a) ? a : []; } catch { return []; }
+  };
+  const saveFbdIgnore = (arr) => {
+    const clean = [...new Set((Array.isArray(arr) ? arr : []).map((w) => String(w || '').trim()).filter(Boolean))];
+    db.prepare(`INSERT INTO app_config (key, value) VALUES ('forbidden_ignore', @v)
+      ON CONFLICT(key) DO UPDATE SET value=@v`).run({ v: JSON.stringify(clean) });
+    return clean;
+  };
+  app.get('/api/forbidden-ignore', (_req, res) => res.json(getFbdIgnore()));
+  app.post('/api/forbidden-ignore', (req, res) => res.json(saveFbdIgnore([...getFbdIgnore(), (req.body || {}).word])));
+  app.post('/api/forbidden-scan', (req, res) => {
+    const ign = new Set(getFbdIgnore());
+    res.json(scan((req.body || {}).text || '', RULES).filter((h) => !ign.has(h.term)));
+  });
 
   app.get('/api/common-phrases', (_req, res) => {
     try {
@@ -147,7 +165,7 @@ function createApp(db) {
   app.post('/api/verify', (req, res) => {
     const { text = '', area = '', limit } = req.body || {};
     const e = evaluate(text, area, Number(limit) || (area ? db_.limitFor(db, area) : 0));
-    res.json({ ...e, overLimit: e.status === 'over', forbiddenHits: scan(text, FORBIDDEN) });
+    res.json({ ...e, overLimit: e.status === 'over', forbiddenHits: scan(text, RULES) });
   });
 
   app.get('/api/template', (_req, res) => {
