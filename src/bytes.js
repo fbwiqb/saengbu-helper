@@ -1,4 +1,4 @@
-const TARGETS = { 자율: 1500, 진로: 1500, 행특: 900, 세특: 1500, 동아리: 1500 };
+const TARGETS = { 자율: 1500, 진로: 1500, 행특: 900, 세특: 1500, 동아리: 1500, 기타: 1500 };
 
 function calcBytes(text) {
   const s = String(text || '').replace(/\r\n?/g, '\n');

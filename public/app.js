@@ -33,6 +33,7 @@ function buildTargets() {
   for (const cat of Object.keys(state.config.areas || {})) {
     for (const a of state.config.areas[cat] || []) t[a.area] = a.limit;
   }
+  for (const cat of PER_SUBJECT) if (!(cat in t)) t[cat] = 1500;
   state.targets = t;
 }
 
@@ -369,7 +370,9 @@ function catFor(g) {
 
 function areasFor(g) {
   const cat = catFor(g);
-  return (state.config.areas[cat] || []).map((a) => a.area);
+  const list = (state.config.areas[cat] || []).map((a) => a.area);
+  if (!list.length && PER_SUBJECT.has(cat)) return [cat];
+  return list;
 }
 
 async function openStudent(hakbun, group) {
@@ -622,7 +625,7 @@ async function runSpell() {
       $('#spellPanel').insertAdjacentHTML('afterbegin', '<div class="warn-item err" style="margin-bottom:6px"><span class="ico">⚠</span><span>맞춤법 검사기 연결 실패 — 이중 공백만 표시</span></div>');
       showToast(`이중 공백 ${sp}곳 · 맞춤법 검사 실패`);
     } else {
-      $('#spellPanel').innerHTML = '<div class="warn-item err"><span class="ico">⚠</span><span>검사기 연결 실패 — 인터넷 확인</span></div>';
+      $('#spellPanel').innerHTML = '<div class="warn-item err"><span class="ico">⚠</span><span>맞춤법 검사기(외부 서비스)에 연결하지 못했습니다. 잠시 후 다시 시도하거나, 다른 네트워크(모바일 핫스팟 등)에서 시도해 보세요. — 나머지 기능은 정상 작동합니다.</span></div>';
     }
   }
 }

@@ -64,3 +64,24 @@ test('레코드 저장은 바이트 자동계산', async () => {
     assert.strictEqual(s.records.find(r => r.area === '자율').bytes, 9);
   });
 });
+
+test('기타 그룹(영역 미설정)도 기본 영역으로 저장·추적됨', async () => {
+  await withServer(async (base) => {
+    await fetch(`${base}/api/groups`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ group_tag: '멘토링', category: '기타' }),
+    });
+    await fetch(`${base}/api/students`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ hakbun: '30401', name: '홍길동', group_tag: '멘토링' }),
+    });
+    const put = await fetch(`${base}/api/records/30401/${encodeURIComponent('기타')}?subject=${encodeURIComponent('멘토링')}`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body: '멘토링 활동 기록', status: '미작성' }),
+    });
+    assert.strictEqual(put.status, 200);
+    const list = await (await fetch(`${base}/api/students?group=${encodeURIComponent('멘토링')}`)).json();
+    assert.strictEqual(list[0].prog.total, 1);
+    assert.strictEqual(list[0].prog.started, 1);
+  });
+});

@@ -364,8 +364,9 @@ function deleteStudent(db, hakbun) {
 function areasForGroup(db, group) {
   const cat = getCategory(db, group);
   const cfg = getAreasConfig(db);
-  const list = cfg[cat] || [];
+  let list = cfg[cat] || [];
   const perSubject = PER_SUBJECT_CATEGORIES.has(cat);
+  if (!list.length && perSubject) list = [{ area: cat }];
   return list.map((a) => ({ area: a.area, subject: perSubject ? String(group || '') : '' }));
 }
 
