@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const db_ = require('../src/db');
-const { open, getAreasConfig, setAreasConfig, upsertGroup, getCategory, areasForGroup, limitFor, bulkAddStudents, listStudents, listGroupsDetailed } = db_;
+const { open, getAreasConfig, setAreasConfig, upsertGroup, getCategory, areasForGroup, limitFor, bulkAddStudents, listStudents, listGroupsDetailed, studentKey } = db_;
 
 function freshDb() { return open(':memory:'); }
 
@@ -49,7 +49,7 @@ test('bulkAddStudents — 한글 컬럼 매핑 + 그룹 카테고리 등록', ()
   assert.strictEqual(getCategory(db, '3-1물리'), '세특');
   const list = listStudents(db, '3-1물리');
   assert.strictEqual(list.length, 2);
-  const a = list.find((s) => s.hakbun === '30101');
+  const a = list.find((s) => s.disp === '30101');
   assert.strictEqual(a.name, '김가');
   assert.strictEqual(a.naesin, 2.5);
   assert.strictEqual(a.jeonhyeong, '농어촌');
@@ -67,10 +67,11 @@ test('listGroupsDetailed — 카테고리+인원', () => {
 test('removeMembership — 마지막 그룹이라도 내용 있으면 학생·기록 보존', () => {
   const db = freshDb();
   bulkAddStudents(db, '고급생명 01', '세특', [{ 학번: '30401', 이름: '강하연' }]);
-  db_.upsertRecord(db, { hakbun: '30401', area: '세특', subject: '고급생명 01', body: '직접 실험 설계함', bytes: 20, status: '완료' });
-  db_.removeMembership(db, '30401', '고급생명 01');
-  const s = db.prepare('SELECT 1 FROM students WHERE hakbun=?').get('30401');
-  const rec = db.prepare("SELECT body FROM records WHERE hakbun='30401' AND area='세특'").get();
+  const k = studentKey('고급생명 01', '30401');
+  db_.upsertRecord(db, { hakbun: k, area: '세특', subject: '고급생명 01', body: '직접 실험 설계함', bytes: 20, status: '완료' });
+  db_.removeMembership(db, k, '고급생명 01');
+  const s = db.prepare('SELECT 1 FROM students WHERE hakbun=?').get(k);
+  const rec = db.prepare('SELECT body FROM records WHERE hakbun=? AND area=?').get(k, '세특');
   assert.ok(s, '학생 보존');
   assert.ok(rec && rec.body.includes('실험'), '본문 보존');
 });
@@ -78,17 +79,20 @@ test('removeMembership — 마지막 그룹이라도 내용 있으면 학생·�
 test('removeMembership — 빈 기록·마지막 그룹이면 학생 정리', () => {
   const db = freshDb();
   bulkAddStudents(db, '고급생명 01', '세특', [{ 학번: '30402', 이름: '성춘향' }]);
-  db_.removeMembership(db, '30402', '고급생명 01');
-  assert.ok(!db.prepare('SELECT 1 FROM students WHERE hakbun=?').get('30402'), '빈 학생 삭제');
+  const k = studentKey('고급생명 01', '30402');
+  db_.removeMembership(db, k, '고급생명 01');
+  assert.ok(!db.prepare('SELECT 1 FROM students WHERE hakbun=?').get(k), '빈 학생 삭제');
 });
 
 test('config에서 영역 제거해도 작성된 본문은 prune되지 않음', () => {
   const db = freshDb();
   bulkAddStudents(db, '3-4담임', '담임', [{ 학번: '30401', 이름: '강하연' }, { 학번: '30406', 이름: '김민우' }]);
-  db_.upsertRecord(db, { hakbun: '30401', area: '행특', subject: '', body: '행특 본문', bytes: 12, status: '완료' });
+  const k1 = studentKey('3-4담임', '30401');
+  const k6 = studentKey('3-4담임', '30406');
+  db_.upsertRecord(db, { hakbun: k1, area: '행특', subject: '', body: '행특 본문', bytes: 12, status: '완료' });
   setAreasConfig(db, { 담임: [{ area: '자율', limit: 1500 }, { area: '진로', limit: 1500 }], 세특: [{ area: '세특', limit: 1500 }], 동아리: [{ area: '동아리', limit: 1500 }], 기타: [] });
-  db_.removeMembership(db, '30406', '3-4담임'); // 무관한 멤버십 변동 → prune 유발
-  const rec = db.prepare("SELECT body FROM records WHERE hakbun='30401' AND area='행특'").get();
+  db_.removeMembership(db, k6, '3-4담임'); // 무관한 멤버십 변동 → prune 유발
+  const rec = db.prepare('SELECT body FROM records WHERE hakbun=? AND area=?').get(k1, '행특');
   assert.ok(rec && rec.body === '행특 본문', '제거된 영역 본문 보존');
 });
 
@@ -103,10 +107,13 @@ test('deleteGroup — 명시 삭제는 그 그룹 기록 제거, 타 그룹 기�
   const db = freshDb();
   bulkAddStudents(db, '3-4담임', '담임', [{ 학번: '30401', 이름: '강하연' }]);
   bulkAddStudents(db, '고급생명 01', '세특', [{ 학번: '30401', 이름: '강하연' }]);
-  db_.upsertRecord(db, { hakbun: '30401', area: '자율', subject: '', body: '자율본문', bytes: 12, status: '완료' });
-  db_.upsertRecord(db, { hakbun: '30401', area: '세특', subject: '고급생명 01', body: '세특본문', bytes: 12, status: '완료' });
+  const kd = studentKey('3-4담임', '30401');
+  const ks = studentKey('고급생명 01', '30401');
+  db_.upsertRecord(db, { hakbun: kd, area: '자율', subject: '', body: '자율본문', bytes: 12, status: '완료' });
+  db_.upsertRecord(db, { hakbun: ks, area: '세특', subject: '고급생명 01', body: '세특본문', bytes: 12, status: '완료' });
   db_.deleteGroup(db, '3-4담임');
-  assert.ok(db.prepare('SELECT 1 FROM students WHERE hakbun=?').get('30401'), '학생 보존(세특 소속)');
-  assert.ok(!db.prepare("SELECT 1 FROM records WHERE hakbun='30401' AND area='자율'").get(), '담임 자율 삭제');
-  assert.ok(db.prepare("SELECT 1 FROM records WHERE hakbun='30401' AND area='세특'").get(), '세특 보존');
+  assert.ok(!db.prepare('SELECT 1 FROM students WHERE hakbun=?').get(kd), '담임 학생 삭제');
+  assert.ok(db.prepare('SELECT 1 FROM students WHERE hakbun=?').get(ks), '세특 학생 보존');
+  assert.ok(!db.prepare('SELECT 1 FROM records WHERE hakbun=? AND area=?').get(kd, '자율'), '담임 자율 삭제');
+  assert.ok(db.prepare('SELECT 1 FROM records WHERE hakbun=? AND area=?').get(ks, '세특'), '세특 보존');
 });
