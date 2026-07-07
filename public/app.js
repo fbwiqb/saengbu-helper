@@ -1,5 +1,7 @@
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const HSEP = String.fromCharCode(31);
+const dispH = (h) => { const s = String(h == null ? '' : h); const i = s.lastIndexOf(HSEP); return i >= 0 ? s.slice(i + 1) : s; };
 let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortUnwritten: false, hlMode: false, hlTerm: null, hlClass: 'hl', hlSpacing: false, sentParts: [], spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null, forbid: [], forbidHlIdx: null, forbidBaseText: '' };
 let dashBodies = {};
 
@@ -238,9 +240,9 @@ function progRatio(s) {
 
 function sortStuds(list) {
   if (state.sortUnwritten) {
-    return list.sort((a, b) => progRatio(a) - progRatio(b) || String(a.hakbun).localeCompare(String(b.hakbun)));
+    return list.sort((a, b) => progRatio(a) - progRatio(b) || String(a.disp || a.hakbun).localeCompare(String(b.disp || b.hakbun)));
   }
-  return list.sort((a, b) => String(a.hakbun).localeCompare(String(b.hakbun)));
+  return list.sort((a, b) => String(a.disp || a.hakbun).localeCompare(String(b.disp || b.hakbun)));
 }
 
 function progBadge(s, isOpen) {
@@ -256,12 +258,12 @@ function progBadge(s, isOpen) {
 function renderStuds(tag, q) {
   let list = state.studsByGroup[tag];
   if (!list) return state.expanded.has(tag) ? '<li class="loading">불러오는 중…</li>' : '';
-  list = sortStuds(list.filter((s) => !q || (`${s.hakbun} ${s.name}`).toLowerCase().includes(q)));
+  list = sortStuds(list.filter((s) => !q || (`${s.disp || dispH(s.hakbun)} ${s.name}`).toLowerCase().includes(q)));
   if (!list.length) return q ? '<li class="empty">결과 없음</li>' : '<li class="empty">학생 없음</li>';
   return list.map((s) => {
     const isOpen = s.hakbun === state.hakbun && tag === state.group;
     return `<li data-h="${esc(s.hakbun)}" data-g="${esc(tag)}" class="${isOpen ? 'sel' : ''}">
-       <span class="nm">${esc(s.hakbun)} ${esc(s.name)}</span>
+       <span class="nm">${esc(s.disp || dispH(s.hakbun))} ${esc(s.name)}</span>
        ${progBadge(s, isOpen)}</li>`;
   }).join('');
 }
@@ -273,7 +275,7 @@ function renderTree() {
     const tag = g.group_tag;
     if (q) {
       const studs = state.studsByGroup[tag] || [];
-      if (!studs.some((s) => (`${s.hakbun} ${s.name}`).toLowerCase().includes(q))) return '';
+      if (!studs.some((s) => (`${s.disp || dispH(s.hakbun)} ${s.name}`).toLowerCase().includes(q))) return '';
     }
     const exp = state.expanded.has(tag) || !!q;
     const active = tag === state.group ? ' active' : '';
@@ -379,11 +381,11 @@ async function openStudent(hakbun, group) {
   await saveIfDirty();
   if (group) { state.group = group; state.expanded.add(group); state.listCache = state.studsByGroup[group] || state.listCache; }
   state.hakbun = hakbun;
-  state.student = await j('/api/students/' + hakbun);
+  state.student = await j('/api/students/' + encodeURIComponent(hakbun));
   setView('student');
   const g = state.group || '';
   const s = state.student;
-  $('#headInfo').innerHTML = `${esc(s.hakbun)} ${esc(s.name)}<span class="sub">(${esc(catFor(g))}) ${esc(g)}${(s.groups || []).length > 1 ? ' · 소속 ' + esc((s.groups || []).join(', ')) : ''}</span>`;
+  $('#headInfo').innerHTML = `${esc(s.disp || dispH(s.hakbun))} ${esc(s.name)}<span class="sub">(${esc(catFor(g))}) ${esc(g)}${(s.groups || []).length > 1 ? ' · 소속 ' + esc((s.groups || []).join(', ')) : ''}</span>`;
   const areas = areasFor(g);
   $('#tabs').innerHTML = areas.map((a) => `<button data-a="${esc(a)}">${esc(a)}</button>`).join('');
   $('#tabs').querySelectorAll('button').forEach((b) => { b.onclick = async () => { await saveIfDirty(); selectArea(b.dataset.a); }; });
@@ -928,7 +930,7 @@ function diffWords(a, b) {
 
 async function openHistory() {
   if (!state.hakbun || !state.area) return;
-  const edits = await j(`/api/history/${state.hakbun}/${encodeURIComponent(state.area)}?subject=${encodeURIComponent(state.subject)}`);
+  const edits = await j(`/api/history/${encodeURIComponent(state.hakbun)}/${encodeURIComponent(state.area)}?subject=${encodeURIComponent(state.subject)}`);
   const versions = [];
   if (edits.length) {
     versions.push({ date: edits[0].created_at, text: edits[0].before });
@@ -1245,7 +1247,7 @@ async function resetData() {
 
 async function saveRecord(silent) {
   if (!state.hakbun || !state.area) return false;
-  const url = `/api/records/${state.hakbun}/${encodeURIComponent(state.area)}?subject=${encodeURIComponent(state.subject)}`;
+  const url = `/api/records/${encodeURIComponent(state.hakbun)}/${encodeURIComponent(state.area)}?subject=${encodeURIComponent(state.subject)}`;
   try {
     const r = await fetch(url, { method: 'PUT', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ body: $('#body').value, status: state.curStatus || '미작성' }) });
@@ -1330,7 +1332,7 @@ async function renderDash() {
       const dim = filter && c.status !== filter ? ' dim' : '';
       return `<tr class="arow-tr ${fillCls(c)}${dim} stu-first">`
         + `<td class="copycol">${copyCell(r, c)}</td>`
-        + `<td class="hakbun">${esc(r.hakbun)}</td><td class="sname">${esc(r.name)}</td>`
+        + `<td class="hakbun">${esc(r.disp || dispH(r.hakbun))}</td><td class="sname">${esc(r.name)}</td>`
         + `<td class="alabel">${esc(c.area)}</td>`
         + barCell(c) + byteCell(c)
         + `<td class="writecol">${writeCell(r, c)}</td></tr>`;
@@ -1341,7 +1343,7 @@ async function renderDash() {
       return r.cells.map((c, i) => {
         const dim = filter && c.status !== filter ? ' dim' : '';
         const who = i === 0
-          ? `<td class="hakbun" rowspan="${n}">${esc(r.hakbun)}</td><td class="sname" rowspan="${n}">${esc(r.name)}</td>`
+          ? `<td class="hakbun" rowspan="${n}">${esc(r.disp || dispH(r.hakbun))}</td><td class="sname" rowspan="${n}">${esc(r.name)}</td>`
           : '';
         return `<tr class="arow-tr ${fillCls(c)}${dim}${i === 0 ? ' stu-first' : ''}">`
           + `<td class="copycol">${copyCell(r, c)}</td>${who}`
@@ -1367,33 +1369,38 @@ async function openWrite(hakbun, group, area) {
 
 async function fetchAllUnits() {
   const groups = await j('/api/groups');
-  const damim = {};
-  const subj = [];
+  const multiDamim = groups.filter((g) => g.category === '담임').length > 1;
+  const units = [];
   for (const g of groups) {
     const d = await j('/api/dashboard?group=' + encodeURIComponent(g.group_tag));
     if (!d.rows.length) continue;
     if (g.category === '담임') {
       for (const area of d.areas) {
-        const u = damim[area] || (damim[area] = { category: '담임', label: area, sheetName: area, area, subject: '', rows: [] });
+        const u = {
+          category: '담임',
+          label: multiDamim ? `${g.group_tag} · ${area}` : area,
+          sheetName: multiDamim ? `${area} ${g.group_tag}` : area,
+          area, subject: '', rows: [],
+        };
         for (const r of d.rows) {
           const c = r.cells.find((x) => x.area === area) || {};
-          u.rows.push({ hakbun: r.hakbun, name: r.name, body: c.body || '', status: c.status || '미작성' });
+          u.rows.push({ hakbun: r.hakbun, disp: r.disp, name: r.name, body: c.body || '', status: c.status || '미작성' });
         }
+        units.push(u);
       }
     } else {
       const area = d.areas[0] || g.category;
       const u = { category: g.category, label: g.group_tag, sheetName: g.group_tag, area, subject: g.group_tag, rows: [] };
       for (const r of d.rows) {
         const c = r.cells.find((x) => x.area === area) || {};
-        u.rows.push({ hakbun: r.hakbun, name: r.name, body: c.body || '', status: c.status || '미작성' });
+        u.rows.push({ hakbun: r.hakbun, disp: r.disp, name: r.name, body: c.body || '', status: c.status || '미작성' });
       }
-      subj.push(u);
+      units.push(u);
     }
   }
-  const all = [...Object.values(damim), ...subj];
   const used = new Set();
-  for (const u of all) u.sheet = xlSheetName(u.sheetName, used);
-  return all;
+  for (const u of units) u.sheet = xlSheetName(u.sheetName, used);
+  return units;
 }
 
 function xlSheetName(name, used) {
@@ -1437,7 +1444,7 @@ function runExport() {
   if (!picked.length) { showToast('내보낼 단위를 하나 이상 고르세요'); return; }
   const wb = XLSX.utils.book_new();
   for (const u of picked) {
-    const aoa = [['학번', '이름', '본문'], ...u.rows.map((r) => [r.hakbun, r.name, r.body])];
+    const aoa = [['학번', '이름', '본문'], ...u.rows.map((r) => [r.disp || dispH(r.hakbun), r.name, r.body])];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 11 }, { wch: 10 }, { wch: 80 }];
     XLSX.utils.book_append_sheet(wb, ws, u.sheet);
@@ -1454,7 +1461,7 @@ async function importDash(file) {
   const bySheet = {};
   for (const u of units) {
     const idx = {};
-    for (const r of u.rows) idx[String(r.hakbun)] = { body: r.body, status: r.status };
+    for (const r of u.rows) idx[String(r.disp || dispH(r.hakbun))] = { key: r.hakbun, body: r.body, status: r.status };
     bySheet[u.sheet] = { area: u.area, subject: u.subject, idx };
   }
   let wb;
@@ -1479,7 +1486,7 @@ async function importDash(file) {
       if (!body.trim()) { skip.empty++; continue; }
       if (body === cur.body) { skip.same++; continue; }
       const status = (!cur.status || cur.status === '미작성') ? '초안' : cur.status;
-      jobs.push({ hakbun: hak, area: target.area, subject: target.subject, body, status });
+      jobs.push({ hakbun: cur.key, area: target.area, subject: target.subject, body, status });
     }
   }
   if (!jobs.length) {
@@ -1491,7 +1498,7 @@ async function importDash(file) {
   let ok = 0, fail = 0;
   for (const job of jobs) {
     try {
-      const r = await fetch(`/api/records/${job.hakbun}/${encodeURIComponent(job.area)}?subject=${encodeURIComponent(job.subject)}`,
+      const r = await fetch(`/api/records/${encodeURIComponent(job.hakbun)}/${encodeURIComponent(job.area)}?subject=${encodeURIComponent(job.subject)}`,
         { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: job.body, status: job.status }) });
       if (r.ok) ok++; else fail++;
     } catch (e) { fail++; }
@@ -1710,7 +1717,7 @@ function renderMgStudents(tag) {
   const list = state.studsByGroup[tag];
   if (!list) return '<div class="muted">불러오는 중…</div>';
   const rows = list.length
-    ? list.map((s) => `<div class="mg-stu"><span class="mg-stu-name">${esc(s.hakbun)} ${esc(s.name)}</span><span class="mg-stu-btns"><button class="mg-srename btn-ghost" data-h="${esc(s.hakbun)}" data-g="${esc(tag)}" data-n="${esc(s.name || '')}">이름변경</button><button class="mg-remove btn-ghost" data-h="${esc(s.hakbun)}" data-g="${esc(tag)}">빼기</button></span></div>`).join('')
+    ? list.map((s) => `<div class="mg-stu"><span class="mg-stu-name">${esc(s.disp || dispH(s.hakbun))} ${esc(s.name)}</span><span class="mg-stu-btns"><button class="mg-srename btn-ghost" data-h="${esc(s.hakbun)}" data-g="${esc(tag)}" data-n="${esc(s.name || '')}">이름변경</button><button class="mg-remove btn-ghost" data-h="${esc(s.hakbun)}" data-g="${esc(tag)}">빼기</button></span></div>`).join('')
     : '<div class="muted">학생 없음</div>';
   return rows + `<div class="mg-addstu"><button class="mg-add btn-ghost" data-g="${esc(tag)}">+ 학생 추가</button></div>`;
 }
@@ -1725,7 +1732,7 @@ async function addStudentMg(tag) {
 }
 
 async function renameStudentMg(hakbun, tag, cur) {
-  const nn = ((await askText('학생 이름 변경 (' + hakbun + ')', cur)) || '').trim();
+  const nn = ((await askText('학생 이름 변경 (' + dispH(hakbun) + ')', cur)) || '').trim();
   if (!nn || nn === cur) return;
   await j('/api/students/' + encodeURIComponent(hakbun), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: nn }) });
   delete state.studsByGroup[tag]; await loadGroup(tag);
@@ -1761,7 +1768,7 @@ async function deleteGroupUI(tag) {
 }
 
 async function removeMemberUI(hakbun, tag) {
-  if (!confirm(`${hakbun} 학생을 '${tag}'에서 뺄까요?\n작성한 기록은 보존됩니다. (다른 그룹에도 없고 작성 내용이 전혀 없을 때만 학생이 정리됩니다)`)) return;
+  if (!confirm(`${dispH(hakbun)} 학생을 '${tag}'에서 뺄까요?\n작성한 기록은 보존됩니다. (다른 그룹에도 없고 작성 내용이 전혀 없을 때만 학생이 정리됩니다)`)) return;
   await j(`/api/students/${encodeURIComponent(hakbun)}/membership/${encodeURIComponent(tag)}`, { method: 'DELETE' });
   await loadGroup(tag); await refreshGroups(); renderManage(); await loadList();
 }

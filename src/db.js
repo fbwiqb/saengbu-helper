@@ -47,6 +47,16 @@ CREATE TABLE IF NOT EXISTS groups (
 const CATEGORIES = ['담임', '세특', '동아리', '기타'];
 const PER_SUBJECT_CATEGORIES = new Set(['세특', '동아리', '기타']);
 
+const HSEP = '';
+function studentKey(group, disp) {
+  return `${String(group == null ? '' : group)}${HSEP}${String(disp == null ? '' : disp).trim()}`;
+}
+function dispHakbun(h) {
+  const s = String(h == null ? '' : h);
+  const i = s.lastIndexOf(HSEP);
+  return i >= 0 ? s.slice(i + 1) : s;
+}
+
 const DEFAULT_AREAS_CONFIG = {
   담임: [
     { area: '자율', limit: 1500 },
@@ -100,6 +110,61 @@ function migrateGroups(db) {
   if (!cols.has('byte_limit')) db.exec('ALTER TABLE groups ADD COLUMN byte_limit INTEGER');
 }
 
+function migrateIdentityV2(db, file) {
+  if (db.prepare("SELECT value FROM app_config WHERE key='identity_v2'").get()) return;
+  const bareRows = db.prepare('SELECT hakbun FROM students WHERE instr(hakbun, char(31)) = 0').all();
+  if (!bareRows.length) {
+    db.prepare("INSERT OR REPLACE INTO app_config (key, value) VALUES ('identity_v2', '1')").run();
+    return;
+  }
+  if (file && file !== ':memory:') {
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+      const fs = require('fs');
+      fs.copyFileSync(file, file + '.pre-v2-' + Math.floor(Date.now() / 1000) + '.bak');
+    } catch (e) { /* backup best-effort */ }
+  }
+  const recBefore = db.prepare('SELECT COUNT(*) n FROM records').get().n;
+  const catOf = (g) => {
+    const r = db.prepare('SELECT category FROM groups WHERE group_tag=?').get(g);
+    return r ? r.category : inferCategory(g);
+  };
+  const tx = db.transaction(() => {
+    for (const { hakbun: H } of bareRows) {
+      const stu = db.prepare('SELECT * FROM students WHERE hakbun=?').get(H);
+      if (!stu) continue;
+      const mems = db.prepare('SELECT group_tag FROM memberships WHERE hakbun=?').all(H).map((r) => r.group_tag);
+      const damim = mems.find((g) => catOf(g) === '담임') || null;
+      for (const G of mems) {
+        const nk = studentKey(G, H);
+        db.prepare(`INSERT OR IGNORE INTO students (hakbun,name,group_tag,ban,beonho,gender,naesin,jeonhyeong,status,created_at,updated_at)
+          VALUES (@hakbun,@name,@group_tag,@ban,@beonho,@gender,@naesin,@jeonhyeong,@status,@created_at,@updated_at)`)
+          .run({ ...stu, hakbun: nk, group_tag: G });
+        db.prepare('INSERT OR IGNORE INTO memberships (hakbun,group_tag) VALUES (?,?)').run(nk, G);
+      }
+      if (mems.length) {
+        const memSet = new Set(mems);
+        const fallback = damim || mems[0];
+        for (const table of ['records', 'books', 'edits_log', 'exemplars_added']) {
+          for (const row of db.prepare(`SELECT rowid AS rid, subject FROM ${table} WHERE hakbun=?`).all(H)) {
+            const subj = row.subject || '';
+            const G = (subj && memSet.has(subj)) ? subj : fallback;
+            db.prepare(`UPDATE ${table} SET hakbun=? WHERE rowid=?`).run(studentKey(G, H), row.rid);
+          }
+        }
+        db.prepare('UPDATE legacy SET hakbun=? WHERE hakbun=?').run(studentKey(fallback, H), H);
+        db.prepare('DELETE FROM students WHERE hakbun=?').run(H);
+        db.prepare('DELETE FROM memberships WHERE hakbun=?').run(H);
+      }
+    }
+    db.prepare("INSERT OR REPLACE INTO app_config (key, value) VALUES ('identity_v2', '1')").run();
+  });
+  tx();
+  const recAfter = db.prepare('SELECT COUNT(*) n FROM records').get().n;
+  const orphan = db.prepare('SELECT COUNT(*) n FROM records r WHERE NOT EXISTS (SELECT 1 FROM students s WHERE s.hakbun = r.hakbun)').get().n;
+  if (recAfter < recBefore || orphan) console.error('[migrateIdentityV2] anomaly — records', recBefore, '->', recAfter, '| orphan', orphan);
+}
+
 function open(file) {
   const db = new Database(file);
   db.pragma('journal_mode = WAL');
@@ -108,6 +173,7 @@ function open(file) {
   migrateGroups(db);
   seedConfig(db);
   backfillGroups(db);
+  migrateIdentityV2(db, file);
   return db;
 }
 
@@ -248,9 +314,17 @@ function renameGroup(db, oldTag, newTag) {
   if (db.prepare('SELECT 1 FROM groups WHERE group_tag=?').get(newTag)) throw new Error('이미 있는 그룹명입니다');
   const cat = getCategory(db, oldTag);
   const perSubject = PER_SUBJECT_CATEGORIES.has(cat);
+  const oldPref = oldTag + HSEP;
+  const newPref = newTag + HSEP;
+  const plen = [...oldPref].length;
+  const rekey = (table) => db.prepare(
+    `UPDATE ${table} SET hakbun = ? || substr(hakbun, ?) WHERE substr(hakbun, 1, ?) = ?`
+  ).run(newPref, plen + 1, plen, oldPref);
   const tx = db.transaction(() => {
     db.prepare('UPDATE groups SET group_tag=? WHERE group_tag=?').run(newTag, oldTag);
     db.prepare('UPDATE memberships SET group_tag=? WHERE group_tag=?').run(newTag, oldTag);
+    db.prepare('UPDATE students SET group_tag=? WHERE group_tag=?').run(newTag, oldTag);
+    for (const table of ['students', 'memberships', 'records', 'books', 'edits_log', 'exemplars_added', 'legacy']) rekey(table);
     if (perSubject) {
       for (const t of ['records', 'books', 'edits_log', 'exemplars_added']) {
         db.prepare(`UPDATE ${t} SET subject=? WHERE subject=?`).run(newTag, oldTag);
@@ -302,6 +376,7 @@ function listStudents(db, group) {
       s.prog = { done, started, total };
     }
   }
+  for (const s of rows) s.disp = dispHakbun(s.hakbun);
   return rows;
 }
 
@@ -315,6 +390,7 @@ function getStudent(db, hakbun) {
   student.records = db.prepare('SELECT * FROM records WHERE hakbun=? ORDER BY area,subject').all(hakbun);
   student.books = db.prepare('SELECT * FROM books WHERE hakbun=?').all(hakbun);
   student.groups = db.prepare('SELECT group_tag FROM memberships WHERE hakbun=? ORDER BY group_tag').all(hakbun).map((r) => r.group_tag);
+  student.disp = dispHakbun(student.hakbun);
   return student;
 }
 
@@ -359,6 +435,8 @@ function deleteStudent(db, hakbun) {
   db.prepare('DELETE FROM records WHERE hakbun=?').run(hakbun);
   db.prepare('DELETE FROM legacy WHERE hakbun=?').run(hakbun);
   db.prepare('DELETE FROM books WHERE hakbun=?').run(hakbun);
+  db.prepare('DELETE FROM edits_log WHERE hakbun=?').run(hakbun);
+  db.prepare('DELETE FROM exemplars_added WHERE hakbun=?').run(hakbun);
 }
 
 function areasForGroup(db, group) {
@@ -390,7 +468,7 @@ function dashboardData(db, group) {
       if (summary[status] !== undefined) summary[status] += 1;
       return { area, subject, status, bytes, pct, limit, body: rec ? (rec.revised || rec.body || '') : '' };
     });
-    return { hakbun: s.hakbun, name: s.name, cells };
+    return { hakbun: s.hakbun, disp: s.disp, name: s.name, cells };
   });
   const totalCells = rows.length * areas.length;
   const completion = totalCells ? Math.round((summary['완료'] / totalCells) * 1000) / 10 : 0;
@@ -444,8 +522,9 @@ function bulkAddStudents(db, group, category, rows) {
   const tx = db.transaction((list) => {
     let added = 0;
     for (const r of list) {
-      const hakbun = String(r.hakbun || r['학번'] || '').trim();
-      if (!hakbun) continue;
+      const disp = String(r.hakbun || r['학번'] || '').trim();
+      if (!disp) continue;
+      const hakbun = studentKey(group, disp);
       const { name: cleanName, paren } = splitStudentName(r.name != null ? r.name : r['이름']);
       let naesin = r.naesin != null ? Number(r.naesin) : (r['내신'] != null ? Number(r['내신']) : null);
       if ((naesin == null || Number.isNaN(naesin)) && /^\d+(\.\d+)?$/.test(paren)) naesin = Number(paren);
@@ -472,5 +551,5 @@ module.exports = {
   dashboardData, editsFor, areasForGroup,
   getAreasConfig, setAreasConfig, getSpellIgnore, saveSpellIgnore, addSpellIgnore, getCategory, upsertGroup, listGroupsDetailed, limitFor, limitForGroup, setGroupByte, bulkAddStudents,
   deleteGroup, removeMembership, renameGroup,
-  CATEGORIES, DEFAULT_AREAS_CONFIG,
+  CATEGORIES, DEFAULT_AREAS_CONFIG, studentKey, dispHakbun,
 };

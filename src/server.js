@@ -189,9 +189,11 @@ function createApp(db) {
   app.get('/api/students', (req, res) => res.json(db_.listStudents(db, req.query.group)));
 
   app.post('/api/students', (req, res) => {
-    if (!req.body || !req.body.hakbun) return res.status(400).json({ error: 'hakbun 필요' });
-    db_.upsertStudent(db, req.body);
-    res.json(db_.getStudent(db, req.body.hakbun));
+    const b = req.body || {};
+    if (!b.hakbun) return res.status(400).json({ error: 'hakbun 필요' });
+    const key = b.group_tag ? db_.studentKey(b.group_tag, b.hakbun) : String(b.hakbun);
+    db_.upsertStudent(db, { ...b, hakbun: key });
+    res.json(db_.getStudent(db, key));
   });
 
   app.get('/api/students/:hakbun', (req, res) => {
