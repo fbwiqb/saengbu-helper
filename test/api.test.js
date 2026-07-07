@@ -85,3 +85,19 @@ test('기타 그룹(영역 미설정)도 기본 영역으로 저장·추적됨',
     assert.strictEqual(list[0].prog.started, 1);
   });
 });
+
+test('명단 업로드: 이름(성적) → 이름만 저장 + 성적은 내신으로, 담임에 안 번짐', async () => {
+  const bulk = (base, g, c, students) => fetch(`${base}/api/students/bulk`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ group_tag: g, category: c, students }),
+  });
+  await withServer(async (base) => {
+    await bulk(base, '3-4반', '담임', [{ hakbun: '30401', name: '강하연' }]);
+    await bulk(base, '고급생명 1', '세특', [{ hakbun: '30401', name: '강하연(5.15)' }]);
+    const damim = await (await fetch(`${base}/api/students?group=${encodeURIComponent('3-4반')}`)).json();
+    assert.strictEqual(damim[0].name, '강하연');
+    const s = await (await fetch(`${base}/api/students/30401`)).json();
+    assert.strictEqual(s.name, '강하연');
+    assert.strictEqual(s.naesin, 5.15);
+  });
+});

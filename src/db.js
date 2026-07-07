@@ -433,6 +433,12 @@ function qualityStats(db, group) {
   return out;
 }
 
+function splitStudentName(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  const m = s.match(/^(.*?)\s*\(([^()]*)\)\s*$/);
+  return (m && m[1].trim()) ? { name: m[1].trim(), paren: m[2].trim() } : { name: s, paren: '' };
+}
+
 function bulkAddStudents(db, group, category, rows) {
   upsertGroup(db, group, category);
   const tx = db.transaction((list) => {
@@ -440,14 +446,18 @@ function bulkAddStudents(db, group, category, rows) {
     for (const r of list) {
       const hakbun = String(r.hakbun || r['학번'] || '').trim();
       if (!hakbun) continue;
+      const { name: cleanName, paren } = splitStudentName(r.name != null ? r.name : r['이름']);
+      let naesin = r.naesin != null ? Number(r.naesin) : (r['내신'] != null ? Number(r['내신']) : null);
+      if ((naesin == null || Number.isNaN(naesin)) && /^\d+(\.\d+)?$/.test(paren)) naesin = Number(paren);
+      if (naesin != null && Number.isNaN(naesin)) naesin = null;
       upsertStudent(db, {
         hakbun,
-        name: String(r.name || r['이름'] || '').trim() || null,
+        name: cleanName || null,
         group_tag: group,
         ban: r.ban != null ? String(r.ban) : (r['반'] != null ? String(r['반']) : null),
         beonho: r.beonho != null ? Number(r.beonho) : (r['번호'] != null ? Number(r['번호']) : null),
         gender: r.gender || r['성별'] || null,
-        naesin: r.naesin != null ? Number(r.naesin) : (r['내신'] != null ? Number(r['내신']) : null),
+        naesin,
         jeonhyeong: r.jeonhyeong || r['전형'] || null,
       });
       added += 1;

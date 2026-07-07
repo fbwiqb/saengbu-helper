@@ -1906,9 +1906,16 @@ function downloadTemplate() {
   XLSX.writeFile(wb, '생기부-학생명단-템플릿.xlsx');
 }
 
+function splitName(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  const m = s.match(/^(.*?)\s*\(([^()]*)\)\s*$/);
+  return (m && m[1].trim()) ? { name: m[1].trim(), paren: m[2].trim() } : { name: s, paren: '' };
+}
+
 function buildCombined(sheets) {
   const groups = {};
   let noHakbun = 0; let noGroup = 0;
+  const namesByHak = {};
   for (const { category, rows } of sheets) {
     const fallback = category === '담임' ? '우리반' : '';
     for (const r of rows) {
@@ -1916,12 +1923,18 @@ function buildCombined(sheets) {
       if (!hakbun) { noHakbun += 1; continue; }
       const grp = rowGroup(category, r, fallback);
       if (!grp) { noGroup += 1; continue; }
+      const { name, paren } = splitName(r['이름'] != null ? r['이름'] : r.name);
+      const naesin = /^\d+(\.\d+)?$/.test(paren) ? Number(paren) : null;
       const key = `${category}|${grp}`;
       if (!groups[key]) groups[key] = { category, group: grp, students: [] };
-      groups[key].students.push({ hakbun, name: String(r['이름'] || r.name || '').trim() });
+      groups[key].students.push({ hakbun, name, naesin });
+      if (name) (namesByHak[hakbun] = namesByHak[hakbun] || new Set()).add(name);
     }
   }
-  return { groups, noHakbun, noGroup };
+  const conflicts = Object.entries(namesByHak)
+    .filter(([, set]) => set.size > 1)
+    .map(([hakbun, set]) => ({ hakbun, names: [...set] }));
+  return { groups, noHakbun, noGroup, conflicts };
 }
 
 function resetUpPreview(msg) {
@@ -1944,7 +1957,7 @@ async function previewUpload(file) {
   showCombinedPreview(buildCombined(sheets));
 }
 
-function showCombinedPreview({ groups, noHakbun, noGroup }) {
+function showCombinedPreview({ groups, noHakbun, noGroup, conflicts }) {
   const keys = Object.keys(groups);
   if (!keys.length) {
     resetUpPreview(noGroup ? '그룹 열(과목명/동아리명/구분) 또는 담임 시트를 확인하세요' : '학번 열을 확인하세요');
@@ -1955,7 +1968,12 @@ function showCombinedPreview({ groups, noHakbun, noGroup }) {
   state.upExcluded = (noHakbun || 0) + (noGroup || 0);
   $('#upRegisterBtn').hidden = false;
   $('#upAddStuBtn').hidden = false;
-  $('#upMsg').textContent = '';
+  if (conflicts && conflicts.length) {
+    const ex = conflicts.slice(0, 3).map((c) => `학번 ${esc(c.hakbun)} = ${c.names.map(esc).join(' / ')}`).join(' · ');
+    $('#upMsg').innerHTML = `<span style="color:var(--red);font-weight:700">⚠ 학번이 겹치는데 이름이 다릅니다(${conflicts.length}건): ${ex}${conflicts.length > 3 ? ' 외' : ''}. 학번은 학생마다 유일해야 하며, 겹치면 서로 덮어써 이름이 뒤섞입니다. 반별 번호가 아닌 <b>전체 학번(예: 30401)</b>을 쓰세요.</span>`;
+  } else {
+    $('#upMsg').textContent = '';
+  }
   renderUpTabs();
   renderUpList();
 }
