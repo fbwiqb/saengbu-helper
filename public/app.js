@@ -2,7 +2,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const HSEP = String.fromCharCode(31);
 const dispH = (h) => { const s = String(h == null ? '' : h); const i = s.lastIndexOf(HSEP); return i >= 0 ? s.slice(i + 1) : s; };
-let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortUnwritten: false, hlMode: false, hlTerm: null, hlClass: 'hl', hlSpacing: false, sentParts: [], spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null, forbid: [], forbidHlIdx: null, forbidBaseText: '' };
+let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortMode: 'hakbun', hlMode: false, hlTerm: null, hlClass: 'hl', hlSpacing: false, sentParts: [], spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null, forbid: [], forbidHlIdx: null, forbidBaseText: '' };
 let dashBodies = {};
 
 const AREA_LABEL = {
@@ -180,7 +180,11 @@ async function boot() {
   $('#upAddStuBtn').onclick = addUpStudent;
   $('#upRegisterBtn').onclick = confirmUpload;
   $('#stuSearch').oninput = () => { clearTimeout(state.searchTimer); state.searchTimer = setTimeout(onSearch, 140); };
-  $('#sortToggle').onclick = () => { state.sortUnwritten = !state.sortUnwritten; $('#sortToggle').textContent = state.sortUnwritten ? '미작성순' : '학번순'; renderTree(); };
+  $('#sortSel').onchange = () => {
+    state.sortMode = $('#sortSel').value;
+    if (state.sortMode === 'custom') showToast('↕ 학생 이름을 드래그해 순서를 바꾸세요');
+    renderTree();
+  };
   document.addEventListener('keydown', onKey);
   Object.defineProperty(window, '__appDirty', { get: () => !!state.dirty });
   $('#quitBtn').onclick = () => window.close();
@@ -239,10 +243,47 @@ function progRatio(s) {
 }
 
 function sortStuds(list) {
-  if (state.sortUnwritten) {
-    return list.sort((a, b) => progRatio(a) - progRatio(b) || String(a.disp || a.hakbun).localeCompare(String(b.disp || b.hakbun)));
+  const byHak = (a, b) => String(a.disp || dispH(a.hakbun)).localeCompare(String(b.disp || dispH(b.hakbun)));
+  if (state.sortMode === 'custom') {
+    return list.sort((a, b) => ((a.ord == null ? Infinity : a.ord) - (b.ord == null ? Infinity : b.ord)) || byHak(a, b));
   }
-  return list.sort((a, b) => String(a.disp || a.hakbun).localeCompare(String(b.disp || b.hakbun)));
+  if (state.sortMode === 'unwritten') {
+    return list.sort((a, b) => progRatio(a) - progRatio(b) || byHak(a, b));
+  }
+  if (state.sortMode === 'name') {
+    return list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko') || byHak(a, b));
+  }
+  return list.sort(byHak);
+}
+
+function enableDrag(ul, group) {
+  ul.querySelectorAll('li[data-h]').forEach((li) => {
+    li.addEventListener('dragstart', (e) => { setTimeout(() => li.classList.add('dragging'), 0); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', li.dataset.h); } catch (_) {} });
+    li.addEventListener('dragend', () => { li.classList.remove('dragging'); persistOrder(ul, group); });
+  });
+  ul.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const cur = ul.querySelector('li.dragging');
+    if (!cur) return;
+    const rest = [...ul.querySelectorAll('li[data-h]:not(.dragging)')];
+    const after = rest.find((li) => { const r = li.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+    if (after) ul.insertBefore(cur, after); else ul.appendChild(cur);
+  });
+}
+
+async function persistOrder(ul, group) {
+  const keys = [...ul.querySelectorAll('li[data-h]')].map((li) => li.dataset.h);
+  const list = state.studsByGroup[group];
+  if (list) {
+    const byKey = {};
+    for (const s of list) byKey[s.hakbun] = s;
+    const reordered = keys.map((k) => byKey[k]).filter(Boolean);
+    for (const s of list) if (!keys.includes(s.hakbun)) reordered.push(s);
+    reordered.forEach((s, i) => { s.ord = i; });
+    state.studsByGroup[group] = reordered;
+    if (state.group === group) state.listCache = reordered;
+  }
+  try { await fetch('/api/students/order', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order: keys }) }); } catch (e) { /* noop */ }
 }
 
 function progBadge(s, isOpen) {
@@ -260,10 +301,12 @@ function renderStuds(tag, q) {
   if (!list) return state.expanded.has(tag) ? '<li class="loading">불러오는 중…</li>' : '';
   list = sortStuds(list.filter((s) => !q || (`${s.disp || dispH(s.hakbun)} ${s.name}`).toLowerCase().includes(q)));
   if (!list.length) return q ? '<li class="empty">결과 없음</li>' : '<li class="empty">학생 없음</li>';
+  const custom = state.sortMode === 'custom';
   return list.map((s) => {
     const isOpen = s.hakbun === state.hakbun && tag === state.group;
-    return `<li data-h="${esc(s.hakbun)}" data-g="${esc(tag)}" class="${isOpen ? 'sel' : ''}">
-       <span class="nm">${esc(s.disp || dispH(s.hakbun))} ${esc(s.name)}</span>
+    const handle = custom ? '<span class="drag-h" title="드래그해 순서 변경">⠿</span>' : '';
+    return `<li data-h="${esc(s.hakbun)}" data-g="${esc(tag)}"${custom ? ' draggable="true"' : ''} class="${isOpen ? 'sel' : ''}${custom ? ' dragrow' : ''}">
+       ${handle}<span class="nm">${esc(s.disp || dispH(s.hakbun))} ${esc(s.name)}</span>
        ${progBadge(s, isOpen)}</li>`;
   }).join('');
 }
@@ -304,6 +347,13 @@ function renderTree() {
       }
     };
   });
+  if (state.sortMode === 'custom') {
+    tree.querySelectorAll('.grp').forEach((grp) => {
+      const head = grp.querySelector('.grp-head');
+      const ul = grp.querySelector('.grp-students');
+      if (head && ul) enableDrag(ul, head.dataset.g);
+    });
+  }
 }
 
 function onStudentClick(hakbun, group) {

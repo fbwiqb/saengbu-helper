@@ -188,6 +188,8 @@ function createApp(db) {
 
   app.get('/api/students', (req, res) => res.json(db_.listStudents(db, req.query.group)));
 
+  app.put('/api/students/order', (req, res) => { db_.setStudentOrder(db, (req.body || {}).order || []); res.json({ ok: true }); });
+
   app.post('/api/students', (req, res) => {
     const b = req.body || {};
     if (!b.hakbun) return res.status(400).json({ error: 'hakbun 필요' });

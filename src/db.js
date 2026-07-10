@@ -110,6 +110,18 @@ function migrateGroups(db) {
   if (!cols.has('byte_limit')) db.exec('ALTER TABLE groups ADD COLUMN byte_limit INTEGER');
 }
 
+function migrateStudentsOrd(db) {
+  const cols = new Set(db.prepare('PRAGMA table_info(students)').all().map((c) => c.name));
+  if (!cols.has('ord')) db.exec('ALTER TABLE students ADD COLUMN ord INTEGER');
+}
+
+function setStudentOrder(db, keys) {
+  const list = Array.isArray(keys) ? keys : [];
+  const stmt = db.prepare('UPDATE students SET ord=? WHERE hakbun=?');
+  const tx = db.transaction(() => { list.forEach((k, i) => stmt.run(i, String(k))); });
+  tx();
+}
+
 function migrateIdentityV2(db, file) {
   if (db.prepare("SELECT value FROM app_config WHERE key='identity_v2'").get()) return;
   const bareRows = db.prepare('SELECT hakbun FROM students WHERE instr(hakbun, char(31)) = 0').all();
@@ -171,6 +183,7 @@ function open(file) {
   db.exec(SCHEMA);
   migrateRecords(db);
   migrateGroups(db);
+  migrateStudentsOrd(db);
   seedConfig(db);
   backfillGroups(db);
   migrateIdentityV2(db, file);
@@ -550,6 +563,6 @@ module.exports = {
   open, upsertStudent, listStudents, listGroups, getStudent, upsertRecord, replaceBooks, deleteStudent,
   dashboardData, editsFor, areasForGroup,
   getAreasConfig, setAreasConfig, getSpellIgnore, saveSpellIgnore, addSpellIgnore, getCategory, upsertGroup, listGroupsDetailed, limitFor, limitForGroup, setGroupByte, bulkAddStudents,
-  deleteGroup, removeMembership, renameGroup,
+  deleteGroup, removeMembership, renameGroup, setStudentOrder,
   CATEGORIES, DEFAULT_AREAS_CONFIG, studentKey, dispHakbun,
 };

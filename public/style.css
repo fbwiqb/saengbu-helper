@@ -381,6 +381,12 @@ button:active { transform: translateY(1px); }
 }
 .chip.hot { background: var(--red-bg); color: var(--red); }
 .chip.watch { border: 1.5px solid var(--red); }
+
+.sort-sel { font-size: 12.5px; padding: 4px 7px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer; }
+.sort-sel:hover { border-color: var(--accent, #2b5d44); }
+.drag-h { display: inline-block; cursor: grab; color: var(--ink-faint); margin-right: 3px; user-select: none; font-size: 12px; letter-spacing: -2px; }
+li.dragrow { cursor: grab; }
+li.dragrow.dragging { opacity: 0.4; background: var(--surface-2); }
 .chip.clickable { cursor: pointer; transition: filter .12s, box-shadow .12s; }
 .chip.clickable:hover { box-shadow: 0 0 0 2px var(--accent-soft); filter: brightness(.97); }
 mark.hl { background: #fff07a; color: inherit; border-radius: 3px; padding: 0; box-shadow: 0 0 0 1px #f4d03f55; }
