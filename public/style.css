@@ -387,6 +387,11 @@ button:active { transform: translateY(1px); }
 .drag-h { display: inline-block; cursor: grab; color: var(--ink-faint); margin-right: 3px; user-select: none; font-size: 12px; letter-spacing: -2px; }
 li.dragrow { cursor: grab; }
 li.dragrow.dragging { opacity: 0.4; background: var(--surface-2); }
+
+.ph-glabel { font-size: 11.5px; margin: 6px 0 3px; }
+.ph-groups { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; font-size: 12.5px; color: var(--ink-soft); }
+.ph-groups label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.ph-groups label.ph-gall { font-weight: 700; color: var(--accent-ink); }
 .chip.clickable { cursor: pointer; transition: filter .12s, box-shadow .12s; }
 .chip.clickable:hover { box-shadow: 0 0 0 2px var(--accent-soft); filter: brightness(.97); }
 mark.hl { background: #fff07a; color: inherit; border-radius: 3px; padding: 0; box-shadow: 0 0 0 1px #f4d03f55; }

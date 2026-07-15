@@ -1574,40 +1574,57 @@ function selectSetPane(t) {
   if (t === 'phrases') renderPhrases();
 }
 
-function phraseGroupOptions(sel) {
-  const opts = ['<option value="">전체 공용</option>'];
-  for (const g of (state.groupsList || [])) opts.push(`<option value="${esc(g.group_tag)}" ${g.group_tag === sel ? 'selected' : ''}>${esc(g.group_tag)}</option>`);
-  return opts.join('');
+function phraseGroupChecks(groups, i) {
+  const gs = state.groupsList || [];
+  const all = !Array.isArray(groups) || groups.length === 0;
+  let html = `<div class="ph-groups" data-i="${i}"><label class="ph-gall"><input type="checkbox" class="ph-g-all"${all ? ' checked' : ''}/> 전체 공용</label>`;
+  for (const g of gs) {
+    const on = !all && groups.includes(g.group_tag);
+    html += `<label><input type="checkbox" class="ph-g" value="${esc(g.group_tag)}"${on ? ' checked' : ''}/> ${esc(g.group_tag)}</label>`;
+  }
+  return html + '</div>';
 }
 
 function renderPhrases() {
   const list = state.phrases || [];
   const rows = list.map((p, i) => `<div class="phrase-row card" data-i="${i}">
       <div class="row">
-        <select class="ph-group" data-i="${i}">${phraseGroupOptions(p.group_tag || '')}</select>
         <input class="ph-title" data-i="${i}" type="text" placeholder="제목 (목록에 표시될 이름)" value="${esc(p.title || '')}" />
         <span class="spacer"></span>
         <button class="ph-del btn-ghost danger" data-i="${i}" type="button">삭제</button>
       </div>
+      <div class="ph-glabel muted">적용 분반 — 체크한 곳에만 표시 (전체 공용이면 모든 곳)</div>
+      ${phraseGroupChecks(Array.isArray(p.groups) ? p.groups : (p.group_tag ? [p.group_tag] : []), i)}
       <textarea class="ph-text" data-i="${i}" rows="3" placeholder="삽입할 문구 (예: ~~~한 수행평가에서 )">${esc(p.text || '')}</textarea>
     </div>`).join('');
   $('#phraseList').innerHTML = rows || '<div class="empty">등록된 공통문구가 없습니다. 아래 ‘+ 공통문구 추가’를 누르세요.</div>';
   $('#phraseList').querySelectorAll('.ph-del').forEach((b) => { b.onclick = () => { collectPhrases(); state.phrases.splice(Number(b.dataset.i), 1); renderPhrases(); }; });
+  $('#phraseList').querySelectorAll('.ph-groups').forEach((box) => {
+    const all = box.querySelector('.ph-g-all');
+    const gs = [...box.querySelectorAll('.ph-g')];
+    all.onchange = () => { if (all.checked) gs.forEach((c) => { c.checked = false; }); else if (!gs.some((c) => c.checked)) all.checked = true; };
+    gs.forEach((c) => { c.onchange = () => { if (c.checked) all.checked = false; if (!gs.some((x) => x.checked)) all.checked = true; }; });
+  });
 }
 
 function collectPhrases() {
   const prev = state.phrases || [];
-  state.phrases = [...document.querySelectorAll('#phraseList .phrase-row')].map((r) => ({
-    id: (prev[Number(r.dataset.i)] || {}).id || ('cp' + Date.now() + Math.floor(Math.random() * 1000)),
-    group_tag: r.querySelector('.ph-group').value,
-    title: r.querySelector('.ph-title').value,
-    text: r.querySelector('.ph-text').value,
-  }));
+  state.phrases = [...document.querySelectorAll('#phraseList .phrase-row')].map((r) => {
+    const box = r.querySelector('.ph-groups');
+    const allOn = box.querySelector('.ph-g-all').checked;
+    const groups = allOn ? [] : [...box.querySelectorAll('.ph-g:checked')].map((c) => c.value);
+    return {
+      id: (prev[Number(r.dataset.i)] || {}).id || ('cp' + Date.now() + Math.floor(Math.random() * 1000)),
+      groups,
+      title: r.querySelector('.ph-title').value,
+      text: r.querySelector('.ph-text').value,
+    };
+  });
 }
 
 function phraseAdd() {
   collectPhrases();
-  state.phrases.push({ id: 'cp' + Date.now(), group_tag: (state.view === 'student' ? state.group : '') || '', title: '', text: '' });
+  state.phrases.push({ id: 'cp' + Date.now(), groups: (state.view === 'student' && state.group) ? [state.group] : [], title: '', text: '' });
   renderPhrases();
 }
 
@@ -1627,7 +1644,11 @@ async function phraseSave() {
 
 function applicablePhrases() {
   const g = state.group || '';
-  return (state.phrases || []).filter((p) => (p.text || '').trim() && (!p.group_tag || p.group_tag === g));
+  return (state.phrases || []).filter((p) => {
+    if (!(p.text || '').trim()) return false;
+    const groups = Array.isArray(p.groups) ? p.groups : (p.group_tag ? [p.group_tag] : []);
+    return groups.length === 0 || groups.includes(g);
+  });
 }
 
 function renderPhraseButtons() {

@@ -102,7 +102,8 @@ function createApp(db) {
   app.get('/api/common-phrases', (_req, res) => {
     try {
       const row = db.prepare("SELECT value FROM app_config WHERE key = 'common_phrases'").get();
-      res.json(row && row.value ? JSON.parse(row.value) : []);
+      const arr = row && row.value ? JSON.parse(row.value) : [];
+      res.json((Array.isArray(arr) ? arr : []).map((p) => ({ ...p, groups: Array.isArray(p.groups) ? p.groups : (p.group_tag ? [p.group_tag] : []) })));
     } catch (e) { res.json([]); }
   });
   app.put('/api/common-phrases', (req, res) => {
@@ -110,7 +111,12 @@ function createApp(db) {
       const arr = Array.isArray((req.body || {}).phrases) ? req.body.phrases : [];
       const clean = arr
         .filter((p) => p && String(p.text || '').trim())
-        .map((p) => ({ id: String(p.id || ''), group_tag: String(p.group_tag || ''), title: String(p.title || '').slice(0, 60), text: String(p.text || '') }));
+        .map((p) => ({
+          id: String(p.id || ''),
+          groups: (Array.isArray(p.groups) ? p.groups : (p.group_tag ? [p.group_tag] : [])).map((x) => String(x || '')).filter(Boolean),
+          title: String(p.title || '').slice(0, 60),
+          text: String(p.text || ''),
+        }));
       db.prepare("INSERT INTO app_config(key,value) VALUES('common_phrases',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(clean));
       res.json(clean);
     } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
