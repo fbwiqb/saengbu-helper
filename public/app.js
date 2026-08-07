@@ -46,9 +46,15 @@ function calcBytes(text) {
   for (const ch of String(text || '')) {
     if (ch === '\n') { b += 2; continue; }
     const cp = ch.codePointAt(0);
-    if (cp <= 0x7f) b += 1; else if (cp <= 0x7ff) b += 2; else if (cp <= 0xffff) b += 3; else b += 4;
+    if (cp <= 0x7f) b += 1; else if (cp <= 0xffff) b += 3; else b += 4;
   }
   return b;
+}
+
+function hopeBytes() {
+  if (state.area !== '진로') return 0;
+  const el = document.getElementById('hopeField');
+  return el ? calcBytes(el.value.trim()) : 0;
 }
 
 function showToast(msg) {
@@ -65,15 +71,17 @@ function showToast(msg) {
   showToast._t = setTimeout(() => { t.style.opacity = '0'; }, 1900);
 }
 
-async function copyText(raw, area, label, limitArg) {
+async function copyText(raw, area, label, limitArg, extraBytes) {
   const text = String(raw || '').replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
   if (!text) { showToast('복사할 내용이 없습니다'); return; }
   try {
     await navigator.clipboard.writeText(text);
     const limit = limitArg != null ? limitArg : (state.targets[area] || 0);
-    const b = calcBytes(text);
+    const extra = extraBytes || 0;
+    const b = calcBytes(text) + extra;
     const over = limit && b > limit ? ' ⚠ 한도초과' : '';
-    showToast(`✓ ${label ? label + ' ' : ''}복사됨 · ${b}${limit ? '/' + limit : ''} byte${over} · NEIS에 붙여넣기`);
+    const detail = extra ? ` (본문 ${b - extra} + 희망분야 ${extra})` : '';
+    showToast(`✓ ${label ? label + ' ' : ''}복사됨 · ${b}${limit ? '/' + limit : ''} byte${detail}${over} · NEIS에 붙여넣기`);
   } catch (e) {
     showToast('복사 실패 — 브라우저 권한 확인');
   }
@@ -89,7 +97,7 @@ function activeLimit(area, g) {
   return groupByteLimit(g || state.group) || state.targets[area] || 0;
 }
 
-function copyArea() { return copyText($('#body').value, state.area, '', activeLimit(state.area)); }
+function copyArea() { return copyText($('#body').value, state.area, '', activeLimit(state.area), hopeBytes()); }
 
 async function boot() {
   state.config = await j('/api/config');
@@ -103,6 +111,7 @@ async function boot() {
     clearTimeout(state.assistTimer);
     state.assistTimer = setTimeout(renderAssist, 180);
   });
+  $('#hopeField').addEventListener('input', () => { state.dirty = true; renderGauge(); });
   $('#spellPanel').addEventListener('click', (ev) => {
     const more = ev.target.closest('.sp-more');
     if (more) { const i = Number(more.dataset.idx); if (state.spellErrors[i]) { state.spellErrors[i].helpOpen = !state.spellErrors[i].helpOpen; renderSpellPanel(); } return; }
@@ -443,18 +452,17 @@ async function openStudent(hakbun, group) {
   selectArea(areas[0]);
 }
 
-const STATUS_CYCLE = ['미작성', '초안', '검증', '완료'];
+const STATUS_CYCLE = ['초안', '완료'];
 
 function setStatusChip(st) {
-  state.curStatus = STATUS_CYCLE.includes(st) ? st : '미작성';
+  state.curStatus = st || '초안';
   const el = $('#statusChip');
   if (el) { el.textContent = state.curStatus; el.className = 'status-chip badge ' + state.curStatus; }
 }
 
 function cycleStatus() {
   if (!state.hakbun || !state.area) return;
-  const i = STATUS_CYCLE.indexOf(state.curStatus || '미작성');
-  setStatusChip(STATUS_CYCLE[(i + 1) % STATUS_CYCLE.length]);
+  setStatusChip(state.curStatus === '완료' ? '초안' : '완료');
   saveRecord(true);
   showToast('상태: ' + state.curStatus);
 }
@@ -465,7 +473,12 @@ function selectArea(area) {
   $('#tabs').querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.a === area));
   const rec = (state.student.records || []).find((r) => r.area === area && r.subject === state.subject) || {};
   $('#body').value = rec.body || '';
-  setStatusChip(rec.status || '미작성');
+  const hopeRow = $('#hopeRow');
+  if (hopeRow) {
+    hopeRow.hidden = area !== '진로';
+    $('#hopeField').value = area === '진로' ? (rec.hope_field || '') : '';
+  }
+  setStatusChip(rec.status || '초안');
   state.spellErrors = []; state.spellHlIdx = null; state.spellBaseText = ''; state.spellUndo = null;
   state.forbid = []; state.forbidHlIdx = null; state.forbidBaseText = '';
   showEdit();
@@ -491,13 +504,23 @@ async function gotoNextUnwritten() {
 function renderGauge() {
   const text = $('#body').value;
   const limit = activeLimit(state.area) || 0;
-  const bytes = calcBytes(text);
+  const bodyB = calcBytes(text);
+  const hopeB = hopeBytes();
+  const bytes = bodyB + hopeB;
   const pct = limit ? (bytes / limit) * 100 : 0;
   const cls = bytes > limit ? 'over' : pct >= 95 ? 'full' : pct < 70 ? 'low' : 'ok';
   $('.gauge').className = 'gauge ' + cls;
   $('#gaugeFill').style.width = Math.min(100, pct) + '%';
   $('#gaugeArea').textContent = `${state.area}${state.subject ? ' · ' + state.subject : ''}`;
-  $('#gaugeText').textContent = `${[...text].length}자 · ${bytes} / ${limit} B (${pct.toFixed(0)}%)`;
+  const sum = state.area === '진로' ? `본문 ${bodyB} + 희망분야 ${hopeB} = ` : '';
+  $('#gaugeText').textContent = `${[...text].length}자 · ${sum}${bytes} / ${limit} B (${pct.toFixed(0)}%)`;
+  if (state.area === '진로') {
+    const el = $('#hopeField'); const hint = $('#hopeHint');
+    const empty = !el.value.trim();
+    el.classList.toggle('empty', empty);
+    hint.className = 'hope-hint' + (empty ? ' warn' : '');
+    hint.textContent = empty ? 'NEIS 희망분야도 한도에 포함됩니다 — 비우면 실제보다 여유가 크게 보입니다' : `${hopeB} byte 차지`;
+  }
   return { bytes, limit, pct, cls };
 }
 
@@ -1053,7 +1076,8 @@ const HELP_PAGES = [
       <li>🔁 <b>표현 빈도</b> — 반복 단어·상투어를 세고, 누르면 본문에 노란 형광 표시 + <b>문장별 보기</b>로 바로 전환.</li>
       <li>✂️ <b>문장별 보기</b> — 문장 단위로 끊어 보고 너무 긴 문장을 표시.</li>
       <li>🧹 <b>줄바꿈·공백 정리</b> — PDF에서 긁어온 본문의 중간 줄바꿈과 이중 공백을 한 번에 정리.</li>
-      <li>🏷️ <b>상태</b> — 왼쪽 사이드바 색 칩을 클릭하면 미작성→초안→검증→완료가 바뀌고 <b>바로 저장</b>됩니다.</li>
+      <li>🏷️ <b>상태</b> — 왼쪽 사이드바 색 칩을 클릭하면 초안 ↔ 완료가 바뀌고 <b>바로 저장</b>됩니다.</li>
+      <li>🎯 <b>희망분야</b> — 진로활동에만 나옵니다. NEIS는 특기사항과 희망분야를 <b>합쳐서</b> 1,500바이트로 세므로, 여기에 적으면 게이지가 합계로 계산됩니다.</li>
     </ul>` },
   { t: '4단계 · 맞춤법과 이력', h: `
     <ul>
@@ -1300,7 +1324,8 @@ async function saveRecord(silent) {
   const url = `/api/records/${encodeURIComponent(state.hakbun)}/${encodeURIComponent(state.area)}?subject=${encodeURIComponent(state.subject)}`;
   try {
     const r = await fetch(url, { method: 'PUT', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ body: $('#body').value, status: state.curStatus || '미작성' }) });
+      body: JSON.stringify({ body: $('#body').value, status: state.curStatus || '초안',
+        hope_field: state.area === '진로' ? $('#hopeField').value.trim() : '' }) });
     if (!r.ok) { showToast('저장 실패 — 잠시 후 다시 시도하세요 (입력은 유지됨)'); return false; }
     state.student = await r.json();
     state.dirty = false;

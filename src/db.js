@@ -1,4 +1,5 @@
 const Database = require('better-sqlite3');
+const { calcBytes } = require('./bytes');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS students (
@@ -74,6 +75,7 @@ const RECORD_COLUMNS = [
   ['q_growth', 'INTEGER DEFAULT NULL'],
   ['q_authentic', 'INTEGER DEFAULT NULL'],
   ['accepted', 'INTEGER DEFAULT 0'],
+  ['hope_field', "TEXT DEFAULT ''"],
 ];
 
 function migrateRecords(db) {
@@ -410,8 +412,9 @@ function getStudent(db, hakbun) {
 function upsertRecord(db, r) {
   const params = {
     subject: '', body: '', revised: '', reason: '', bytes: 0, status: '초안',
-    q_exp: null, q_think: null, q_growth: null, q_authentic: null, accepted: 0, ...r,
+    q_exp: null, q_think: null, q_growth: null, q_authentic: null, accepted: 0, hope_field: '', ...r,
   };
+  params.hope_field = params.area === '진로' ? String(params.hope_field || '').trim() : '';
   params.subject = params.subject == null ? '' : params.subject;
   if (!params.subject) {
     const groups = db.prepare('SELECT group_tag FROM memberships WHERE hakbun=?').all(params.hakbun).map((m) => m.group_tag);
@@ -427,12 +430,13 @@ function upsertRecord(db, r) {
       VALUES (?,?,?,?,?,?,datetime('now'))`)
       .run(params.hakbun, params.area, params.subject, prevText, newText, params.reason || '');
   }
-  db.prepare(`INSERT INTO records (hakbun,area,subject,body,revised,reason,bytes,status,q_exp,q_think,q_growth,q_authentic,accepted,updated_at)
-    VALUES (@hakbun,@area,@subject,@body,@revised,@reason,@bytes,@status,@q_exp,@q_think,@q_growth,@q_authentic,@accepted,datetime('now'))
+  db.prepare(`INSERT INTO records (hakbun,area,subject,body,revised,reason,bytes,status,q_exp,q_think,q_growth,q_authentic,accepted,hope_field,updated_at)
+    VALUES (@hakbun,@area,@subject,@body,@revised,@reason,@bytes,@status,@q_exp,@q_think,@q_growth,@q_authentic,@accepted,@hope_field,datetime('now'))
     ON CONFLICT(hakbun,area,subject) DO UPDATE SET body=excluded.body, revised=excluded.revised,
       reason=excluded.reason, bytes=excluded.bytes, status=excluded.status,
       q_exp=excluded.q_exp, q_think=excluded.q_think, q_growth=excluded.q_growth,
-      q_authentic=excluded.q_authentic, accepted=excluded.accepted, updated_at=datetime('now')`)
+      q_authentic=excluded.q_authentic, accepted=excluded.accepted,
+      hope_field=excluded.hope_field, updated_at=datetime('now')`)
     .run(params);
 }
 
@@ -461,9 +465,13 @@ function areasForGroup(db, group) {
   return list.map((a) => ({ area: a.area, subject: perSubject ? String(group || '') : '' }));
 }
 
+function hopeBytesOf(rec, area) {
+  return area === '진로' && rec && rec.hope_field ? calcBytes(String(rec.hope_field).trim()) : 0;
+}
+
 function statusBytes(db, group, rec, area) {
   const limit = limitForGroup(db, group, area);
-  const bytes = rec ? (rec.bytes || 0) : 0;
+  const bytes = (rec ? (rec.bytes || 0) : 0) + hopeBytesOf(rec, area);
   const pct = limit ? Math.round((bytes / limit) * 1000) / 10 : 0;
   return { bytes, pct, limit };
 }

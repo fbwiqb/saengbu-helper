@@ -221,6 +221,16 @@ textarea {
   transition: border-color .15s, box-shadow .15s;
 }
 #body { min-height: 340px; font-size: 15px; }
+.hope-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.hope-row label { font-size: 12px; font-weight: 700; color: var(--ink-soft); white-space: nowrap; }
+.hope-row input {
+  width: 200px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 10px; font: inherit; font-size: 13.5px; color: var(--ink); outline: none;
+}
+.hope-row input:focus { border-color: var(--accent); }
+.hope-row input.empty { border-color: var(--amber); background: var(--amber-bg); }
+.hope-hint { font-size: 11.5px; color: var(--ink-soft); }
+.hope-hint.warn { color: var(--red); font-weight: 600; }
 .row { display: flex; gap: 12px; }
 .row label { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--ink-soft); font-weight: 600; }
 .row textarea { min-height: 70px; font-size: 13.5px; }

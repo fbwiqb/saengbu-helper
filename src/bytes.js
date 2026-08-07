@@ -8,7 +8,6 @@ function calcBytes(text) {
     else {
       const cp = ch.codePointAt(0);
       if (cp <= 0x7f) total += 1;
-      else if (cp <= 0x7ff) total += 2;
       else if (cp <= 0xffff) total += 3;
       else total += 4;
     }

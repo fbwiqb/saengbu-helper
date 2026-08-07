@@ -206,13 +206,18 @@
             <button id="sentToggle" class="btn-ghost">문장별 보기</button>
             <button id="dejoinBtn" class="btn-ghost" title="문장 중간 줄바꿈과 이중 공백을 한 번에 정리">줄바꿈·공백 정리</button>
           </div>
+          <div id="hopeRow" class="hope-row" hidden>
+            <label for="hopeField">희망분야</label>
+            <input id="hopeField" type="text" maxlength="40" placeholder="예: 자연과학 · 의학 · 치의학" />
+            <span id="hopeHint" class="hope-hint"></span>
+          </div>
           <textarea id="body" placeholder="생기부 본문을 입력하세요"></textarea>
           <div id="sentView" class="sent-view" hidden></div>
         </div>
 
         <div class="card">
           <div class="actions">
-            <button id="statusChip" class="status-chip badge 미작성" type="button" title="클릭하면 상태 순환: 미작성 → 초안 → 검증 → 완료">미작성</button>
+            <button id="statusChip" class="status-chip badge 초안" type="button" title="클릭하면 초안 ↔ 완료 전환">초안</button>
             <span class="spacer"></span>
             <button id="copyBtn" class="btn-ghost">복사</button>
             <button id="spellBtn" class="btn-ghost">맞춤법</button>

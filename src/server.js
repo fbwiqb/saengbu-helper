@@ -247,6 +247,7 @@ function createApp(db) {
       status: b.status || '초안',
       q_exp: scores.q_exp, q_think: scores.q_think, q_growth: scores.q_growth, q_authentic: scores.q_authentic,
       accepted: b.accepted ? 1 : 0,
+      hope_field: b.hope_field == null ? '' : String(b.hope_field),
     });
     db_.replaceBooks(db, hakbun, area, subject, extractBooks(body));
     res.json(db_.getStudent(db, hakbun));
