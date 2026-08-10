@@ -441,6 +441,13 @@ mark.space-err { background: #ffd5d5; color: #c0392b; font-weight: 700; letter-s
 .sent .stx:hover { background: var(--surface-2); cursor: text; }
 .sent .stx:focus { background: var(--surface); box-shadow: 0 0 0 2px var(--accent); }
 
+.sel-byte {
+  position: fixed; z-index: 60; pointer-events: none;
+  background: var(--ink); color: #fbf7ef; font-size: 12px; font-weight: 700;
+  padding: 4px 9px; border-radius: 7px; white-space: nowrap;
+  font-variant-numeric: tabular-nums; box-shadow: 0 4px 12px rgba(40,34,28,.22);
+}
+
 /* ===== Freq panel ===== */
 .freq-grp { margin-bottom: 10px; }
 .freq-grp:last-child { margin-bottom: 0; }

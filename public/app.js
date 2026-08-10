@@ -112,6 +112,7 @@ async function boot() {
     state.assistTimer = setTimeout(renderAssist, 180);
   });
   $('#hopeField').addEventListener('input', () => { state.dirty = true; renderGauge(); });
+  bindSelByte();
   $('#spellPanel').addEventListener('click', (ev) => {
     const more = ev.target.closest('.sp-more');
     if (more) { const i = Number(more.dataset.idx); if (state.spellErrors[i]) { state.spellErrors[i].helpOpen = !state.spellErrors[i].helpOpen; renderSpellPanel(); } return; }
@@ -449,7 +450,7 @@ async function openStudent(hakbun, group) {
   $('#tabs').innerHTML = areas.map((a) => `<button data-a="${esc(a)}">${esc(a)}</button>`).join('');
   $('#tabs').querySelectorAll('button').forEach((b) => { b.onclick = async () => { await saveIfDirty(); selectArea(b.dataset.a); }; });
   loadList();
-  selectArea(areas[0]);
+  selectArea(areas.includes(state.area) ? state.area : areas[0]);
 }
 
 const STATUS_CYCLE = ['초안', '완료'];
@@ -499,6 +500,43 @@ async function gotoNextUnwritten() {
   const incomplete = (s) => !s.prog || s.prog.done < s.prog.total;
   const next = order.find(incomplete) || order.find((s) => s.hakbun !== state.hakbun);
   if (next) openStudent(next.hakbun, state.group);
+}
+
+function selectedText() {
+  const ta = $('#body');
+  if (ta && !ta.hidden && document.activeElement === ta) return ta.value.slice(ta.selectionStart, ta.selectionEnd);
+  const sv = $('#sentView');
+  if (sv && !sv.hidden) {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && sv.contains(sel.anchorNode)) return String(sel);
+  }
+  return '';
+}
+
+function hideSelByte() { const el = $('#selByte'); if (el) el.hidden = true; }
+
+function showSelByte(x, y) {
+  const el = $('#selByte');
+  if (!el) return;
+  const sel = selectedText();
+  if (!sel.trim()) { el.hidden = true; return; }
+  const b = calcBytes(sel);
+  const rest = calcBytes($('#body').value) - b;
+  el.textContent = `선택 ${[...sel].length}자 · ${b}B · 빼면 ${rest}B`;
+  el.hidden = false;
+  const w = el.offsetWidth || 170;
+  el.style.left = Math.max(6, Math.min(window.innerWidth - w - 8, x + 12)) + 'px';
+  el.style.top = Math.min(window.innerHeight - 30, y + 16) + 'px';
+}
+
+function bindSelByte() {
+  let x = 0, y = 0;
+  document.addEventListener('mousemove', (e) => { x = e.clientX; y = e.clientY; }, { passive: true });
+  document.addEventListener('mouseup', (e) => setTimeout(() => showSelByte(e.clientX, e.clientY), 0));
+  document.addEventListener('keyup', (e) => { if (e.shiftKey || e.key === 'Shift' || (e.ctrlKey && e.key.toLowerCase() === 'a')) showSelByte(x, y); else hideSelByte(); });
+  document.addEventListener('mousedown', hideSelByte);
+  document.addEventListener('scroll', hideSelByte, true);
+  window.addEventListener('blur', hideSelByte);
 }
 
 function renderGauge() {
