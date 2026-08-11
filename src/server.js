@@ -254,6 +254,7 @@ function createApp(db) {
   });
 
   app.get('/api/dashboard', (req, res) => res.json(db_.dashboardData(db, req.query.group)));
+  app.get('/api/all-records', (req, res) => res.json(db_.allRecords(db)));
   app.get('/api/history/:hakbun/:area', (req, res) => res.json(db_.editsFor(db, req.params.hakbun, req.params.area, req.query.subject || '')));
 
   return app;

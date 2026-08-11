@@ -113,6 +113,17 @@ async function boot() {
   });
   $('#hopeField').addEventListener('input', () => { state.dirty = true; renderGauge(); });
   bindSelByte();
+  ['#kwInput', '#kwFrom', '#kwTo'].forEach((sel) => $(sel).addEventListener('input', renderKeyword));
+  $('#openGlobalFind').onclick = () => gfOpen('find', kwList()[0] || '');
+  $('#dashFindBtn').onclick = () => gfOpen('find');
+  $('#gfTabFind').onclick = () => gfSetMode('find');
+  $('#gfTabRep').onclick = () => gfSetMode('rep');
+  $('#gfQ').addEventListener('input', gfRender);
+  $('#gfR').addEventListener('input', gfRender);
+  $('#gfScope').addEventListener('change', gfRender);
+  $('#gfClose').onclick = gfClose;
+  $('#gfApply').onclick = gfApply;
+  $('#gfBack').addEventListener('click', (e) => { if (e.target === $('#gfBack')) gfClose(); });
   $('#spellPanel').addEventListener('click', (ev) => {
     const more = ev.target.closest('.sp-more');
     if (more) { const i = Number(more.dataset.idx); if (state.spellErrors[i]) { state.spellErrors[i].helpOpen = !state.spellErrors[i].helpOpen; renderSpellPanel(); } return; }
@@ -482,8 +493,10 @@ function selectArea(area) {
   setStatusChip(rec.status || '초안');
   state.spellErrors = []; state.spellHlIdx = null; state.spellBaseText = ''; state.spellUndo = null;
   state.forbid = []; state.forbidHlIdx = null; state.forbidBaseText = '';
+  $('#kwFrom').value = ''; $('#kwTo').value = '';
   showEdit();
   renderAssist();
+  renderKeyword();
   renderPhraseButtons();
   $('#spellPanel').innerHTML = '<div class="empty">‘맞춤법’ 버튼을 눌러 점검</div>';
   $('#fbdPanel').innerHTML = '<div class="empty">‘맞춤법’ 버튼을 누르면 함께 검사</div>';
@@ -502,6 +515,61 @@ async function gotoNextUnwritten() {
   if (next) openStudent(next.hakbun, state.group);
 }
 
+function kwList() {
+  return $('#kwInput').value.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function renderKeyword() {
+  const text = $('#body').value;
+  const from = $('#kwFrom').value;
+  const to = $('#kwTo').value;
+  const kws = kwList();
+  const hits = from ? text.split(from).length - 1 : 0;
+  const preview = !!from && hits > 0;
+  const tags = $('#kwTags');
+  const prev = $('#kwPrev');
+  if (!kws.length && !preview) {
+    tags.innerHTML = '<span class="kw-empty">키워드를 넣으면 본문에서 강조됩니다. 표현 빈도 칩을 눌러 담을 수도 있습니다.</span>';
+    prev.innerHTML = from ? `<div class="kw-prev over">이 학생 본문에 <b>${esc(from)}</b>이(가) 없습니다</div>` : '';
+    $('#kwView').hidden = true;
+    if (!state.sentMode && !state.hlMode) $('#body').hidden = false;
+    return;
+  }
+  tags.innerHTML = kws.map((w, i) => `<span class="kw-tag k${i % 4}">${esc(w)}<em>${text.split(w).length - 1}</em></span>`).join('');
+  let html = esc(text);
+  if (preview) {
+    html = html.split(esc(from)).join(`<del class="kwdel">${esc(from)}</del><ins class="kwins">${esc(to)}</ins>`);
+    const next = text.split(from).join(to);
+    const after = calcBytes(next);
+    const limit = activeLimit(state.area) || 0;
+    const over = limit && after > limit;
+    prev.innerHTML = `<div class="kw-prev${over ? ' over' : ''}"><b>${hits}곳</b> 바뀝니다 · <b>${calcBytes(text)}</b>B → <b>${after}</b>B ${over ? '⚠ 한도 ' + limit + ' 초과' : '(한도 안)'}<div class="kw-act"><button class="btn-primary" id="kwApply" type="button">이대로 바꾸기</button><button class="btn-ghost" id="kwCancel" type="button">취소</button></div></div>`;
+    $('#kwApply').onclick = () => {
+      $('#body').value = next;
+      state.dirty = true;
+      $('#kwFrom').value = ''; $('#kwTo').value = '';
+      renderAssist(); renderKeyword();
+      showToast(`✓ ${hits}곳 바꿈`);
+    };
+    $('#kwCancel').onclick = () => { $('#kwFrom').value = ''; $('#kwTo').value = ''; renderKeyword(); };
+  } else {
+    prev.innerHTML = from ? `<div class="kw-prev over">이 학생 본문에 <b>${esc(from)}</b>이(가) 없습니다</div>` : '';
+    kws.forEach((w, i) => { html = html.split(esc(w)).join(`<mark class="k${i % 4}">${esc(w)}</mark>`); });
+  }
+  $('#kwView').innerHTML = html;
+  $('#kwView').hidden = false;
+  $('#body').hidden = true;
+  $('#sentView').hidden = true;
+}
+
+function addKeyword(term) {
+  const cur = $('#kwInput').value.trim();
+  const list = kwList();
+  if (list.includes(term)) return;
+  $('#kwInput').value = cur ? cur + ', ' + term : term;
+  renderKeyword();
+}
+
 function selectedText() {
   const ta = $('#body');
   if (ta && !ta.hidden && document.activeElement === ta) return ta.value.slice(ta.selectionStart, ta.selectionEnd);
@@ -515,7 +583,25 @@ function selectedText() {
 
 function hideSelByte() { const el = $('#selByte'); if (el) el.hidden = true; }
 
-function showSelByte(x, y) {
+function caretXY(ta, pos) {
+  const cs = getComputedStyle(ta);
+  const d = document.createElement('div');
+  ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight',
+    'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderLeftWidth', 'boxSizing'].forEach((k) => { d.style[k] = cs[k]; });
+  Object.assign(d.style, { position: 'absolute', top: '0', left: '-9999px', visibility: 'hidden',
+    whiteSpace: 'pre-wrap', wordWrap: 'break-word', width: cs.width });
+  d.textContent = ta.value.slice(0, pos);
+  const sp = document.createElement('span');
+  sp.textContent = '​';
+  d.appendChild(sp);
+  document.body.appendChild(d);
+  const r = ta.getBoundingClientRect();
+  const out = { x: r.left + sp.offsetLeft - ta.scrollLeft, y: r.top + sp.offsetTop - ta.scrollTop, lh: parseFloat(cs.lineHeight) || 20 };
+  document.body.removeChild(d);
+  return out;
+}
+
+function showSelByte(mx, my) {
   const el = $('#selByte');
   if (!el) return;
   const sel = selectedText();
@@ -525,8 +611,25 @@ function showSelByte(x, y) {
   el.textContent = `선택 ${[...sel].length}자 · ${b}B · 빼면 ${rest}B`;
   el.hidden = false;
   const w = el.offsetWidth || 170;
-  el.style.left = Math.max(6, Math.min(window.innerWidth - w - 8, x + 12)) + 'px';
-  el.style.top = Math.min(window.innerHeight - 30, y + 16) + 'px';
+  const h = el.offsetHeight || 24;
+  const ta = $('#body');
+  let x; let y;
+  if (ta && !ta.hidden && document.activeElement === ta) {
+    const p = caretXY(ta, ta.selectionEnd);
+    const box = ta.getBoundingClientRect();
+    x = p.x + 6; y = p.y + p.lh - 2;
+    if (y + h > box.bottom - 2) y = box.bottom - h - 4;
+    if (x + w > box.right - 6) x = box.right - w - 6;
+  } else {
+    const s = window.getSelection();
+    if (s && s.rangeCount) {
+      const rect = s.getRangeAt(0).getBoundingClientRect();
+      if (rect && rect.width) { x = rect.right + 4; y = rect.bottom + 2; }
+    }
+    if (x == null) { x = mx + 12; y = my + 16; }
+  }
+  el.style.left = Math.max(6, Math.min(window.innerWidth - w - 8, x)) + 'px';
+  el.style.top = Math.max(6, Math.min(window.innerHeight - h - 6, y)) + 'px';
 }
 
 function bindSelByte() {
@@ -537,6 +640,114 @@ function bindSelByte() {
   document.addEventListener('mousedown', hideSelByte);
   document.addEventListener('scroll', hideSelByte, true);
   window.addEventListener('blur', hideSelByte);
+}
+
+async function gfOpen(mode, term) {
+  $('#gfBack').hidden = false;
+  if (!state.allRecs) {
+    $('#gfSum').textContent = '불러오는 중…';
+    try { state.allRecs = await j('/api/all-records'); } catch (e) { state.allRecs = []; }
+    const scopes = [...new Set(state.allRecs.map((r) => r.area + (r.subject ? ' · ' + r.subject : '')))];
+    $('#gfScope').innerHTML = `<option value="">전체 기록 (${state.allRecs.length}건)</option>` +
+      scopes.map((s) => `<option value="${esc(s)}">${esc(s)} (${state.allRecs.filter((r) => r.area + (r.subject ? ' · ' + r.subject : '') === s).length})</option>`).join('');
+  }
+  if (term != null) $('#gfQ').value = term;
+  gfSetMode(mode || 'find');
+  $('#gfQ').focus();
+}
+
+function gfClose() { $('#gfBack').hidden = true; }
+
+function gfSetMode(m) {
+  state.gfMode = m;
+  $('#gfTabFind').classList.toggle('sel', m === 'find');
+  $('#gfTabRep').classList.toggle('sel', m === 'rep');
+  $('#gfR').hidden = m === 'find';
+  $('#gfApply').hidden = m === 'find';
+  gfRender();
+}
+
+function gfPool() {
+  const s = $('#gfScope').value;
+  const all = state.allRecs || [];
+  return s ? all.filter((r) => r.area + (r.subject ? ' · ' + r.subject : '') === s) : all;
+}
+
+function gfHits(q) {
+  if (!q) return [];
+  return gfPool().map((r) => {
+    const idx = []; let i = r.body.indexOf(q);
+    while (i >= 0) { idx.push(i); i = r.body.indexOf(q, i + q.length); }
+    return idx.length ? { r, idx } : null;
+  }).filter(Boolean);
+}
+
+function gfSnip(body, idx, q) {
+  return idx.slice(0, 2).map((i) => {
+    const a = Math.max(0, i - 28); const b = Math.min(body.length, i + q.length + 32);
+    return (a > 0 ? '…' : '') + esc(body.slice(a, i)) + '<mark class="k0">' + esc(q) + '</mark>' + esc(body.slice(i + q.length, b)) + (b < body.length ? '…' : '');
+  }).join('<br>');
+}
+
+function gfRender() {
+  const q = $('#gfQ').value; const rep = $('#gfR').value;
+  const H = gfHits(q);
+  const tot = H.reduce((s, h) => s + h.idx.length, 0);
+  $('#gfSum').innerHTML = !q ? '찾을 말을 입력하세요' : (H.length ? `<b>${H.length}건</b>에서 <b>${tot}회</b>` : '결과 없음');
+  if (state.gfMode === 'find') {
+    $('#gfList').innerHTML = H.map((h, i) => `<div class="gf-hit" data-i="${i}"><span class="gf-who">${esc(h.r.hakbun)} ${esc(h.r.name)}<small>${esc(h.r.area)}${h.r.subject ? ' · ' + esc(h.r.subject) : ''}</small></span><span class="gf-snip">${gfSnip(h.r.body, h.idx, q)}</span><span class="gf-cnt">${h.idx.length}회</span></div>`).join('')
+      || '<div class="empty" style="padding:18px;text-align:center">—</div>';
+    $('#gfWarn').innerHTML = '';
+    $('#gfList').querySelectorAll('.gf-hit').forEach((el) => {
+      el.onclick = async () => {
+        const h = H[Number(el.dataset.i)];
+        gfClose();
+        state.area = h.r.area;
+        await openStudent(h.r.key, h.r.group);
+        selectArea(h.r.area);
+        $('#kwInput').value = q;
+        renderKeyword();
+      };
+    });
+    return;
+  }
+  const rows = H.map((h) => {
+    const next = h.r.body.split(q).join(rep);
+    const after = calcBytes(next);
+    return { h, next, after, over: h.r.limit && after > h.r.limit };
+  });
+  const overs = rows.filter((x) => x.over);
+  state.gfRows = rows;
+  $('#gfList').innerHTML = rows.length
+    ? '<table class="gf-tbl"><thead><tr><th style="width:24px"><input type="checkbox" id="gfAll" checked></th><th>학생</th><th>영역</th><th class="num">지금</th><th class="num">바꾼 뒤</th><th class="num">횟수</th></tr></thead><tbody>' +
+      rows.map((x, i) => `<tr class="${x.over ? 'over' : ''}"><td><input type="checkbox" class="gf-ck" data-i="${i}" ${x.over ? '' : 'checked'}></td><td>${esc(x.h.r.hakbun)} ${esc(x.h.r.name)}</td><td>${esc(x.h.r.area)}${x.h.r.subject ? ' · ' + esc(x.h.r.subject) : ''}</td><td class="num">${x.h.r.bytes}</td><td class="num aft">${x.after}${x.over ? ' ⚠' : ''}</td><td class="num">${x.h.idx.length}</td></tr>`).join('') + '</tbody></table>'
+    : '<div class="empty" style="padding:18px;text-align:center">—</div>';
+  $('#gfWarn').innerHTML = rows.length
+    ? (overs.length ? `<div class="gf-warn"><b>${overs.length}건</b>이 한도를 넘습니다 — ${overs.map((o) => o.h.r.hakbun + ' ' + o.h.r.name + ' ' + o.after + 'B').join(', ')}. 체크를 풀면 건너뜁니다.</div>`
+      : '<div class="gf-warn ok">모두 한도 안에 들어옵니다. 적용 후에도 이력 보기로 되돌릴 수 있습니다.</div>')
+    : '';
+  const all = $('#gfAll');
+  if (all) all.onclick = () => { $('#gfList').querySelectorAll('.gf-ck').forEach((c) => { c.checked = all.checked; }); };
+}
+
+async function gfApply() {
+  const rows = state.gfRows || [];
+  const picks = [...$('#gfList').querySelectorAll('.gf-ck')].filter((c) => c.checked).map((c) => rows[Number(c.dataset.i)]);
+  if (!picks.length) { showToast('선택된 항목이 없습니다'); return; }
+  if (!confirm(`${picks.length}건을 바꿉니다. 계속할까요?`)) return;
+  $('#gfApply').disabled = true;
+  let done = 0;
+  for (const p of picks) {
+    const url = `/api/records/${encodeURIComponent(p.h.r.key)}/${encodeURIComponent(p.h.r.area)}?subject=${encodeURIComponent(p.h.r.subject)}`;
+    try {
+      await j(url, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: p.next, status: p.h.r.status }) });
+      p.h.r.body = p.next; p.h.r.bytes = p.after; done += 1;
+    } catch (e) { /* skip */ }
+  }
+  $('#gfApply').disabled = false;
+  showToast(`✓ ${done}건 바꿈`);
+  if (state.hakbun) { const s = await j('/api/students/' + encodeURIComponent(state.hakbun)); state.student = s; selectArea(state.area); }
+  gfRender();
 }
 
 function renderGauge() {
@@ -645,6 +856,8 @@ function showEdit() {
   state.sentMode = false; state.hlMode = false; state.hlTerm = null; state.hlSpacing = false;
   if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); }
   if (state.forbidHlIdx != null) { state.forbidHlIdx = null; markForbidActive(); }
+  const kv = $('#kwView');
+  if (kv && !kv.hidden) { kv.hidden = true; $('#kwInput').value = ''; $('#kwFrom').value = ''; $('#kwTo').value = ''; renderKeyword(); }
   $('#body').hidden = false; $('#sentView').hidden = true;
   $('#sentToggle').classList.remove('sel'); $('#sentToggle').textContent = '문장별 보기';
 }
@@ -703,7 +916,7 @@ function renderFreq(text) {
       + top.map(([w, n]) => `<span class="chip clickable ${n >= 4 ? 'hot' : ''}" data-term="${esc(w)}">${esc(w)} ${n}</span>`).join('') + '</div>';
   }
   $('#freqPanel').innerHTML = html || '<div class="empty">반복 표현 없음</div>';
-  $('#freqPanel').querySelectorAll('.chip.clickable').forEach((c) => { c.onclick = () => { if (state.hlMode && state.hlTerm === c.dataset.term) { showEdit(); return; } if (state.spellHlIdx != null) { state.spellHlIdx = null; markSpellActive(); } if (state.forbidHlIdx != null) { state.forbidHlIdx = null; markForbidActive(); } highlightTerm(c.dataset.term); }; });
+  $('#freqPanel').querySelectorAll('.chip.clickable').forEach((c) => { c.onclick = () => addKeyword(c.dataset.term); });
 }
 
 const SPELL_HELP_MAX = 80;
@@ -1387,8 +1600,14 @@ function onKey(e) {
     if (!$('#histModal').hidden) { closeHistory(); return; }
     if (!$('#helpModal').hidden) { closeHelp(); return; }
     if (!$('#fbModal').hidden) { closeFb(); return; }
+    if (!$('#gfBack').hidden) { gfClose(); return; }
   }
   const mod = e.ctrlKey || e.metaKey;
+  if (mod && (e.key === 'f' || e.key === 'F' || e.key === 'h' || e.key === 'H')) {
+    e.preventDefault();
+    gfOpen(/[fF]/.test(e.key) ? 'find' : 'rep');
+    return;
+  }
   if (mod && (e.key === 's' || e.key === 'S')) { e.preventDefault(); if (state.hakbun) saveRecord(); }
   else if (mod && e.key === 'ArrowRight') { if (document.activeElement === $('#body')) return; e.preventDefault(); if (state.hakbun) gotoNextUnwritten(); }
   else if (mod && /^[1-9]$/.test(e.key) && state.view === 'student' && state.hakbun && state.area && !$('#body').hidden) {

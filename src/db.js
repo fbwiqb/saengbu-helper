@@ -496,6 +496,23 @@ function dashboardData(db, group) {
   return { group, areas: areas.map((a) => a.area), rows, summary, totalCells, completion };
 }
 
+function allRecords(db) {
+  const rows = db.prepare(
+    `SELECT r.hakbun, r.area, r.subject, r.body, r.revised, r.bytes, r.status, s.name
+     FROM records r LEFT JOIN students s ON s.hakbun = r.hakbun
+     ORDER BY r.area, r.subject, r.hakbun`).all();
+  return rows.map((r) => {
+    const key = String(r.hakbun || '');
+    const sep = key.indexOf(HSEP);
+    const group = sep >= 0 ? key.slice(0, sep) : '';
+    const hak = sep >= 0 ? key.slice(sep + 1) : key;
+    const body = r.revised || r.body || '';
+    return { key, hakbun: hak, group, name: r.name || '', area: r.area, subject: r.subject || '',
+      body, bytes: r.bytes || 0, status: r.status || '미작성',
+      limit: limitForGroup(db, group, r.area) };
+  }).filter((r) => r.body.trim());
+}
+
 function editsFor(db, hakbun, area, subject) {
   return db.prepare('SELECT * FROM edits_log WHERE hakbun=? AND area=? AND subject=? ORDER BY id ASC')
     .all(hakbun, area, subject || '');
@@ -569,7 +586,7 @@ function bulkAddStudents(db, group, category, rows) {
 
 module.exports = {
   open, upsertStudent, listStudents, listGroups, getStudent, upsertRecord, replaceBooks, deleteStudent,
-  dashboardData, editsFor, areasForGroup,
+  dashboardData, allRecords, editsFor, areasForGroup,
   getAreasConfig, setAreasConfig, getSpellIgnore, saveSpellIgnore, addSpellIgnore, getCategory, upsertGroup, listGroupsDetailed, limitFor, limitForGroup, setGroupByte, bulkAddStudents,
   deleteGroup, removeMembership, renameGroup, setStudentOrder,
   CATEGORIES, DEFAULT_AREAS_CONFIG, studentKey, dispHakbun,
