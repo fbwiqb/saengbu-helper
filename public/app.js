@@ -1911,17 +1911,38 @@ function phraseAdd() {
 }
 
 async function phraseSave() {
+  const before = (state.phrases || []).map((p) => ({ id: p.id, text: p.text || '' }));
   collectPhrases();
   const payload = (state.phrases || []).filter((p) => (p.text || '').trim());
   try {
     const r = await fetch('/api/common-phrases', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phrases: payload }) });
     const d = await r.json();
     if (!r.ok) { $('#phraseMsg').textContent = d.error || '저장 실패'; return; }
+    const changed = [];
+    d.forEach((p) => {
+      const old = before.find((b) => b.id === p.id);
+      if (old && old.text.trim() && old.text !== p.text) changed.push({ from: old.text, to: p.text || '' });
+    });
     state.phrases = d;
     renderPhrases();
     $('#phraseMsg').textContent = `✓ 저장됨 (${d.length}개)`;
     setTimeout(() => { $('#phraseMsg').textContent = ''; }, 3000);
+    if (changed.length) await offerPhraseSync(changed);
   } catch (e) { $('#phraseMsg').textContent = '저장 실패'; }
+}
+
+async function offerPhraseSync(changed) {
+  state.allRecs = null;
+  let all = [];
+  try { all = await j('/api/all-records'); } catch (e) { return; }
+  const usable = changed.map((c) => ({ ...c, n: all.filter((r) => r.body.includes(c.from)).length })).filter((c) => c.n > 0);
+  if (!usable.length) return;
+  const first = usable[0];
+  const msg = usable.map((c) => `· ${c.n}건 — “${c.from.slice(0, 24)}${c.from.length > 24 ? '…' : ''}”`).join('\n');
+  if (!confirm(`고친 문구가 이미 들어간 기록이 있습니다.\n\n${msg}\n\n지금 일괄로 바꿀까요? (미리보기 후 선택 적용)`)) return;
+  await gfOpen('rep', first.from);
+  $('#gfR').value = first.to;
+  gfRender();
 }
 
 function applicablePhrases() {
