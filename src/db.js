@@ -487,7 +487,9 @@ function dashboardData(db, group) {
       const status = rec ? (rec.status || '미작성') : '미작성';
       const { bytes, pct, limit } = statusBytes(db, group, rec, area);
       if (summary[status] !== undefined) summary[status] += 1;
-      return { area, subject, status, bytes, pct, limit, body: rec ? (rec.revised || rec.body || '') : '' };
+      return { area, subject, status, bytes, pct, limit,
+        hope: area === '진로' && rec ? String(rec.hope_field || '').trim() : '',
+        body: rec ? (rec.revised || rec.body || '') : '' };
     });
     return { hakbun: s.hakbun, disp: s.disp, name: s.name, cells };
   });

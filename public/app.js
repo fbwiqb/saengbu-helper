@@ -4,6 +4,7 @@ const HSEP = String.fromCharCode(31);
 const dispH = (h) => { const s = String(h == null ? '' : h); const i = s.lastIndexOf(HSEP); return i >= 0 ? s.slice(i + 1) : s; };
 let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortMode: 'hakbun', hlMode: false, hlTerm: null, hlClass: 'hl', hlSpacing: false, sentParts: [], spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null, forbid: [], forbidHlIdx: null, forbidBaseText: '' };
 let dashBodies = {};
+let copyMarks = {};
 
 const AREA_LABEL = {
   자율: '자율·자치활동', 진로: '진로활동', 동아리: '동아리활동',
@@ -73,7 +74,7 @@ function showToast(msg) {
 
 async function copyText(raw, area, label, limitArg, extraBytes) {
   const text = String(raw || '').replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
-  if (!text) { showToast('복사할 내용이 없습니다'); return; }
+  if (!text) { showToast('복사할 내용이 없습니다'); return false; }
   try {
     await navigator.clipboard.writeText(text);
     const limit = limitArg != null ? limitArg : (state.targets[area] || 0);
@@ -82,9 +83,52 @@ async function copyText(raw, area, label, limitArg, extraBytes) {
     const over = limit && b > limit ? ' ⚠ 한도초과' : '';
     const detail = extra ? ` (본문 ${b - extra} + 희망분야 ${extra})` : '';
     showToast(`✓ ${label ? label + ' ' : ''}복사됨 · ${b}${limit ? '/' + limit : ''} byte${detail}${over} · NEIS에 붙여넣기`);
+    return true;
   } catch (e) {
     showToast('복사 실패 — 브라우저 권한 확인');
+    return false;
   }
+}
+
+function cellKey(hakbun, area, subject) { return `${hakbun}|${area}|${subject || ''}`; }
+
+function copyHash(raw) {
+  const s = String(raw || '').replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+function markCopied(key, text) {
+  if (!key) return;
+  copyMarks[key] = { h: copyHash(text), at: Date.now() };
+  paintCopyMarks();
+}
+
+function paintCopyBtn(b) {
+  const m = copyMarks[b.dataset.key];
+  const stale = !!m && m.h !== copyHash(dashBodies[b.dataset.key] || '');
+  const when = m ? new Date(m.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
+  b.classList.toggle('copied', !!m && !stale);
+  b.classList.toggle('recopy', stale);
+  b.textContent = !m ? '복사' : (stale ? '다시 복사' : '복사함');
+  b.title = !m ? `${b.dataset.area} 복사`
+    : (stale ? `${when} 복사한 뒤 본문이 바뀌었습니다 — 다시 복사하세요` : `${when} 복사함`);
+  const tr = b.closest('tr');
+  if (tr) { tr.classList.toggle('copied-row', !!m && !stale); tr.classList.toggle('recopy-row', stale); }
+}
+
+function paintCopyMarks() {
+  const tbl = $('#dashTable');
+  if (tbl) tbl.querySelectorAll('.cell-copy').forEach(paintCopyBtn);
+  const reset = $('#copyResetBtn');
+  if (reset) reset.hidden = !Object.keys(copyMarks).length;
+}
+
+function clearCopyMarks() {
+  copyMarks = {};
+  paintCopyMarks();
+  showToast('복사 표시를 지웠습니다');
 }
 
 function groupByteLimit(g) {
@@ -97,7 +141,12 @@ function activeLimit(area, g) {
   return groupByteLimit(g || state.group) || state.targets[area] || 0;
 }
 
-function copyArea() { return copyText($('#body').value, state.area, '', activeLimit(state.area), hopeBytes()); }
+async function copyArea() {
+  const text = $('#body').value;
+  const ok = await copyText(text, state.area, '', activeLimit(state.area), hopeBytes());
+  if (ok && state.hakbun && state.area) markCopied(cellKey(state.hakbun, state.area, state.subject), text);
+  return ok;
+}
 
 async function boot() {
   state.config = await j('/api/config');
@@ -1340,9 +1389,10 @@ const HELP_PAGES = [
     <p class="help-note">단축키 — 저장 <b>Ctrl+S</b> · 다음 미작성 <b>Ctrl+→</b> · 공통문구 <b>Ctrl+1~9</b></p>` },
   { t: '5단계 · 대시보드 · 복사 · 백업', h: `
     <ul>
-      <li>📊 <b>대시보드</b> — 반 전체·세특 분반별 진행률을 한눈에 봅니다.</li>
+      <li>📊 <b>대시보드</b> — 반 전체·세특 분반별 진행률을 한눈에 봅니다. 진로 줄에는 적어 둔 <b>희망분야</b>가 함께 뜨고, 비어 있으면 표시로 알려 줍니다.</li>
       <li>📤 <b>엑셀 내보내기 → 업로드(일괄 입력)</b> — <b>[엑셀 내보내기]</b>를 누르면 단위 선택 창이 떠요. 켠 단위마다 <b>시트가 하나씩</b> 만들어집니다(자율/진로/행특, 세특은 분반별). 이 엑셀이 곧 <b>템플릿</b> — 본문 칸을 채워 <b>[📥 엑셀 업로드]</b>하면 학번·시트이름으로 찾아 <b>한 번에 저장</b>됩니다. (⚠ 시트 이름은 바꾸지 마세요. 빈 칸·안 바뀐 칸은 건너뜁니다.)</li>
       <li>📋 <b>영역별 복사</b> — 대시보드 상단 <b>[자율][진로][행특]</b> 버튼을 누르면 그 영역만 학생별 한 줄씩 떠서, 복사 버튼으로 내려가며 NEIS에 붙여넣기.</li>
+      <li>✓ <b>복사한 곳 표시</b> — 복사한 칸은 <b>✓ 복사함</b>으로 바뀌어, 진한 초록 버튼이 처음 나오는 줄이 곧 이어서 할 곳입니다. 복사한 뒤 본문을 고치면 <b>↻ 다시 복사</b>로 알려 줘요. 표시는 프로그램을 끄면 사라지고, <b>[↺ 복사 표시 지우기]</b>로 언제든 지울 수 있습니다.</li>
       <li>💾 <b>암호화 백업</b> — 설정 ▸ 데이터·백업에서 비밀번호로 내보내, 다른 PC에서 같은 비밀번호로 불러오면 그대로 이어집니다. (비밀번호를 잊으면 복원 불가)</li>
       <li>🗑️ <b>데이터 삭제</b> — 새 학년엔 ‘생기부 데이터 삭제하기’로 명단·그룹·기록을 한 번에 초기화. <b>되돌릴 수 없으니 먼저 백업</b>하세요(영역·바이트 설정은 유지).</li>
     </ul>` },
@@ -1632,24 +1682,36 @@ async function renderDash() {
   state.dashArea = areaSel;
   dashBodies = {};
   for (const r of d.rows) for (const c of r.cells) {
-    if ((c.body || '').trim().length > 0) dashBodies[`${r.hakbun}|${c.area}|${c.subject || ''}`] = c.body;
+    if ((c.body || '').trim().length > 0) dashBodies[cellKey(r.hakbun, c.area, c.subject)] = c.body;
   }
   const fillCls = (c) => c.status === '미작성' && !c.bytes ? 'none' : (c.pct > 100 ? 'over' : c.pct >= 95 ? 'full' : c.pct < 70 ? 'low' : 'ok');
 
   const areaEl = $('#dashAreas');
   if (areaEl) {
     areaEl.innerHTML = '<span class="dash-area-lab">영역별 복사</span>'
-      + ['', ...d.areas].map((a) => `<button class="dash-area-btn${areaSel === a ? ' sel' : ''}" data-area="${esc(a)}">${a === '' ? '전체(학생별)' : esc(a)}</button>`).join('');
+      + ['', ...d.areas].map((a) => `<button class="dash-area-btn${areaSel === a ? ' sel' : ''}" data-area="${esc(a)}">${a === '' ? '전체(학생별)' : esc(a)}</button>`).join('')
+      + '<button id="copyResetBtn" class="dash-copyreset" type="button" title="복사 표시는 앱을 껐다 켜면 자동으로 사라집니다" hidden>↺ 복사 표시 지우기</button>';
     areaEl.querySelectorAll('.dash-area-btn').forEach((b) => { b.onclick = () => { state.dashArea = b.dataset.area; renderDash(); }; });
+    $('#copyResetBtn').onclick = clearCopyMarks;
   }
 
+  const hopeOf = (c) => (c.area === '진로' ? String(c.hope || '').trim() : '');
   const copyCell = (r, c) => {
-    const key = `${r.hakbun}|${c.area}|${c.subject || ''}`;
+    const key = cellKey(r.hakbun, c.area, c.subject);
     const hasText = (c.body || '').trim().length > 0;
     const lim = c.limit || state.targets[c.area] || 0;
+    const hb = hopeOf(c) ? calcBytes(hopeOf(c)) : 0;
     return hasText
-      ? `<button class="cell-copy" data-key="${esc(key)}" data-area="${esc(c.area)}" data-lim="${lim}" title="${esc(c.area)} 복사">복사</button>`
+      ? `<button class="cell-copy" data-key="${esc(key)}" data-area="${esc(c.area)}" data-lim="${lim}" data-hb="${hb}" title="${esc(c.area)} 복사">복사</button>`
       : '<span class="row-copy-empty">–</span>';
+  };
+  const areaCell = (c) => {
+    if (c.area !== '진로') return `<td class="alabel">${esc(c.area)}</td>`;
+    const hope = hopeOf(c);
+    const chip = hope
+      ? `<span class="hope-tag" title="NEIS 희망분야 · ${calcBytes(hope)} byte가 위 바이트에 포함됨">${esc(hope)}</span>`
+      : ((c.body || '').trim() ? '<span class="hope-tag none" title="희망분야가 비어 있습니다 — NEIS는 특기사항과 희망분야를 합쳐 세므로, 채워야 남은 바이트가 정확합니다">희망분야 없음</span>' : '');
+    return `<td class="alabel">${esc(c.area)}${chip}</td>`;
   };
   const writeCell = (r, c) => `<button class="gowrite" data-h="${esc(r.hakbun)}" data-g="${esc(state.group)}" data-a="${esc(c.area)}">쓰러 가기 ▶</button>`;
   const barCell = (c) => `<td class="barcol"><div class="dbar"><div class="dfill" style="width:${Math.min(100, c.pct)}%"></div></div></td>`;
@@ -1665,7 +1727,7 @@ async function renderDash() {
       return `<tr class="arow-tr ${fillCls(c)}${dim} stu-first">`
         + `<td class="copycol">${copyCell(r, c)}</td>`
         + `<td class="hakbun">${esc(r.disp || dispH(r.hakbun))}</td><td class="sname">${esc(r.name)}</td>`
-        + `<td class="alabel">${esc(c.area)}</td>`
+        + areaCell(c)
         + barCell(c) + byteCell(c)
         + `<td class="writecol">${writeCell(r, c)}</td></tr>`;
     }).join('');
@@ -1679,7 +1741,7 @@ async function renderDash() {
           : '';
         return `<tr class="arow-tr ${fillCls(c)}${dim}${i === 0 ? ' stu-first' : ''}">`
           + `<td class="copycol">${copyCell(r, c)}</td>${who}`
-          + `<td class="alabel">${esc(c.area)}</td>`
+          + areaCell(c)
           + barCell(c) + byteCell(c)
           + `<td class="writecol">${writeCell(r, c)}</td></tr>`;
       }).join('');
@@ -1687,11 +1749,16 @@ async function renderDash() {
   }
   $('#dashTable').innerHTML = `<table class="dash flat">${head}${rows}</table>`;
   $('#dashTable').querySelectorAll('.cell-copy').forEach((b) => {
-    b.onclick = () => copyText(dashBodies[b.dataset.key], b.dataset.area, '', Number(b.dataset.lim) || null);
+    b.onclick = async () => {
+      const text = dashBodies[b.dataset.key];
+      const ok = await copyText(text, b.dataset.area, '', Number(b.dataset.lim) || null, Number(b.dataset.hb) || 0);
+      if (ok) markCopied(b.dataset.key, text);
+    };
   });
   $('#dashTable').querySelectorAll('.gowrite').forEach((b) => {
     b.onclick = () => openWrite(b.dataset.h, b.dataset.g, b.dataset.a);
   });
+  paintCopyMarks();
 }
 
 async function openWrite(hakbun, group, area) {

@@ -28,6 +28,17 @@ test('dashboardData 담임 요약/바이트/완료율', () => {
   assert.ok(cellA.pct > 0);
 });
 
+test('dashboardData 진로 셀에 희망분야 포함', () => {
+  const db = freshDb();
+  upsertStudent(db, { hakbun: 'A', name: '가', group_tag: '3-4담임' });
+  upsertRecord(db, { hakbun: 'A', area: '진로', subject: '', body: '가나다', bytes: 9, status: '초안', hope_field: ' 자연과학 ' });
+  upsertRecord(db, { hakbun: 'A', area: '자율', subject: '', body: '가나다', bytes: 9, status: '초안', hope_field: '자연과학' });
+  const cells = dashboardData(db, '3-4담임').rows[0].cells;
+  assert.strictEqual(cells.find((c) => c.area === '진로').hope, '자연과학');
+  assert.strictEqual(cells.find((c) => c.area === '자율').hope, '');
+  assert.strictEqual(cells.find((c) => c.area === '행특').hope, '');
+});
+
 test('dashboardData 세특은 subject=그룹명 매칭', () => {
   const db = freshDb();
   upsertStudent(db, { hakbun: 'A', name: '가', group_tag: '통합과학1' });
