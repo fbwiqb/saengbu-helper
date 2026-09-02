@@ -155,6 +155,10 @@ function createApp(db) {
     const v = db_.setGroupByte(db, req.params.tag, (req.body || {}).byte_limit);
     res.json({ ok: true, byte_limit: v });
   });
+  app.put('/api/groups/:tag/hidden', (req, res) => {
+    const v = db_.setGroupHidden(db, req.params.tag, (req.body || {}).hidden);
+    res.json({ ok: true, hidden: v });
+  });
   app.delete('/api/students/:hakbun/membership/:tag', (req, res) => {
     db_.removeMembership(db, req.params.hakbun, req.params.tag);
     res.json({ ok: true });

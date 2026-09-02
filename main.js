@@ -51,18 +51,24 @@ async function createWindow() {
   win.on('close', (e) => {
     if (forceClose) return;
     e.preventDefault();
-    win.webContents.executeJavaScript('window.__appDirty === true').catch(() => false).then((dirty) => {
+    (async () => {
+      let dirty = false;
+      try { dirty = await win.webContents.executeJavaScript('window.__appDirty === true'); } catch (_e) {}
       if (dirty) {
-        const { dialog } = require('electron');
-        const res = dialog.showMessageBoxSync(win, { type: 'warning', noLink: true, buttons: ['종료', '취소'], defaultId: 1, cancelId: 1, title: '종료', message: '저장하지 않은 변경이 있습니다. 종료할까요?' });
-        if (res !== 0) { relaunchAfterInstall = false; return; }
+        let saved = false;
+        try { saved = await win.webContents.executeJavaScript('window.__flushSave ? window.__flushSave() : Promise.resolve(false)'); } catch (_e) {}
+        if (!saved) {
+          const { dialog } = require('electron');
+          const res = dialog.showMessageBoxSync(win, { type: 'warning', noLink: true, buttons: ['종료', '취소'], defaultId: 1, cancelId: 1, title: '종료', message: '저장하지 않은 변경이 있습니다. 종료할까요?' });
+          if (res !== 0) { relaunchAfterInstall = false; return; }
+        }
       }
       forceClose = true;
       if (updateReady && autoUpdaterRef) {
         try { autoUpdaterRef.quitAndInstall(true, relaunchAfterInstall); return; } catch (_e) {}
       }
       win.destroy();
-    });
+    })();
   });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(({ url }) => {

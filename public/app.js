@@ -2,7 +2,8 @@ const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const HSEP = String.fromCharCode(31);
 const dispH = (h) => { const s = String(h == null ? '' : h); const i = s.lastIndexOf(HSEP); return i >= 0 ? s.slice(i + 1) : s; };
-let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortMode: 'hakbun', hlMode: false, hlTerm: null, hlClass: 'hl', hlSpacing: false, sentParts: [], spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null, forbid: [], forbidHlIdx: null, forbidBaseText: '' };
+let state = { group: null, hakbun: null, area: null, subject: '', targets: {}, forbidden: [], student: null, view: 'student', listCache: [], config: { categories: [], areas: {} }, groupCat: {}, sentMode: false, dirty: false, groupsList: [], expanded: new Set(), studsByGroup: {}, sortMode: 'hakbun', showHidden: false, hlMode: false, hlTerm: null, hlClass: 'hl', hlSpacing: false, sentParts: [], spellErrors: [], spellBaseText: '', spellIgnore: new Set(), spellHlIdx: null, spellUndo: null, forbid: [], forbidHlIdx: null, forbidBaseText: '' };
+try { state.showHidden = localStorage.getItem('saengbu_show_hidden') === '1'; } catch (_) {}
 let dashBodies = {};
 let copyMarks = {};
 
@@ -41,6 +42,21 @@ function buildTargets() {
 }
 
 async function j(url, opt) { const r = await fetch(url, opt); return r.json(); }
+
+function relTime(sqliteUtc) {
+  if (!sqliteUtc) return '';
+  const t = new Date(String(sqliteUtc).replace(' ', 'T') + 'Z').getTime();
+  if (Number.isNaN(t)) return '';
+  const min = Math.floor((Date.now() - t) / 60000);
+  if (min < 1) return '방금 전';
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}일 전`;
+  const d = new Date(t);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
 
 function calcBytes(text) {
   let b = 0;
@@ -156,11 +172,12 @@ async function boot() {
   await refreshGroups();
   $('#body').addEventListener('input', () => {
     state.dirty = true;
+    setSaveStatus('저장 안 된 변경 있음');
     renderGauge();
     clearTimeout(state.assistTimer);
     state.assistTimer = setTimeout(renderAssist, 180);
   });
-  $('#hopeField').addEventListener('input', () => { state.dirty = true; renderGauge(); });
+  $('#hopeField').addEventListener('input', () => { state.dirty = true; setSaveStatus('저장 안 된 변경 있음'); renderGauge(); });
   bindSelByte();
   ['#kwInput', '#kwFrom', '#kwTo'].forEach((sel) => $(sel).addEventListener('input', renderKeyword));
   $('#openGlobalFind').onclick = () => gfOpen('find', kwList()[0] || '');
@@ -215,9 +232,9 @@ async function boot() {
   $('#nextBtn').onclick = gotoNextUnwritten;
   $('#sentToggle').onclick = toggleSentMode;
   $('#dejoinBtn').onclick = dejoinBody;
-  $('#vStudent').onclick = () => setView('student');
-  $('#vDash').onclick = () => setView('dash');
-  $('#vSettings').onclick = () => setView('settings');
+  $('#vStudent').onclick = async () => { await saveIfDirty(); setView('student'); };
+  $('#vDash').onclick = async () => { await saveIfDirty(); setView('dash'); };
+  $('#vSettings').onclick = async () => { await saveIfDirty(); setView('settings'); };
   $('#dashFilter').onchange = renderDash;
   $('#dashExport').onclick = openExport;
   $('#exportClose').onclick = closeExport;
@@ -255,8 +272,10 @@ async function boot() {
     if (state.sortMode === 'custom') showToast('↕ 학생 이름을 드래그해 순서를 바꾸세요');
     renderTree();
   };
+  $('#hiddenToggle').onclick = toggleShowHidden;
   document.addEventListener('keydown', onKey);
   Object.defineProperty(window, '__appDirty', { get: () => !!state.dirty });
+  window.__flushSave = async () => { await saveIfDirty(); return !state.dirty; };
   $('#quitBtn').onclick = () => window.close();
   initUpdater();
   try { if (!localStorage.getItem('saengbu_help_hidden') && !localStorage.getItem('saengbu_onboarded')) { openHelp(); localStorage.setItem('saengbu_onboarded', '1'); } } catch (e) { /* ignore */ }
@@ -384,7 +403,9 @@ function renderStuds(tag, q) {
 function renderTree() {
   const q = ($('#stuSearch').value || '').trim().toLowerCase();
   const tree = $('#groupTree');
-  tree.innerHTML = state.groupsList.map((g) => {
+  const hiddenCount = state.groupsList.filter((g) => g.hidden).length;
+  const visibleGroups = state.groupsList.filter((g) => q || state.showHidden || !g.hidden);
+  tree.innerHTML = visibleGroups.map((g) => {
     const tag = g.group_tag;
     if (q) {
       const studs = state.studsByGroup[tag] || [];
@@ -392,11 +413,12 @@ function renderTree() {
     }
     const exp = state.expanded.has(tag) || !!q;
     const active = tag === state.group ? ' active' : '';
-    return `<div class="grp">
+    return `<div class="grp${g.hidden ? ' grp-hidden' : ''}">
       <div class="grp-head${active}" data-g="${esc(tag)}">
         <span class="caret">${exp ? '▾' : '▸'}</span>
         <span class="grp-name"><span class="grp-cat">(${esc(g.category)})</span> ${esc(tag)}</span>
         <span class="grp-n">${g.n}</span>
+        <button class="grp-hide" data-g="${esc(tag)}" title="${g.hidden ? '숨김 해제' : '이 그룹 숨기기 (예: 지난 학기 학생)'}">${g.hidden ? '🙈' : '👁'}</button>
         <button class="grp-add" data-g="${esc(tag)}" title="학생 추가">＋</button>
       </div>
       <ul class="grp-students" ${exp ? '' : 'hidden'}>${exp ? renderStuds(tag, q) : ''}</ul>
@@ -404,10 +426,16 @@ function renderTree() {
   }).join('') || '<div class="empty" style="padding:14px">그룹 없음 — 설정에서 명단을 올리세요</div>';
 
   tree.querySelectorAll('.grp-head').forEach((h) => {
-    h.onclick = (e) => { if (e.target.closest('.grp-add')) return; toggleGroup(h.dataset.g); };
+    h.onclick = (e) => { if (e.target.closest('.grp-add') || e.target.closest('.grp-hide')) return; toggleGroup(h.dataset.g); };
   });
   tree.querySelectorAll('.grp-add').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); addStudent(b.dataset.g); }; });
+  tree.querySelectorAll('.grp-hide').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); toggleGroupHidden(b.dataset.g); }; });
   tree.querySelectorAll('li[data-h]').forEach((li) => { li.onclick = () => onStudentClick(li.dataset.h, li.dataset.g); });
+  const hiddenToggle = $('#hiddenToggle');
+  if (hiddenToggle) {
+    hiddenToggle.hidden = !hiddenCount;
+    hiddenToggle.textContent = state.showHidden ? `숨긴 그룹 ${hiddenCount}개 숨기기 ▲` : `숨긴 그룹 ${hiddenCount}개 보기 ▼`;
+  }
   tree.querySelectorAll('li[data-h] .prog-chip').forEach((chip) => {
     chip.onclick = (e) => {
       const li = chip.closest('li');
@@ -448,6 +476,20 @@ async function toggleGroup(tag) {
   }
   renderTree();
   if (state.view !== 'student') refreshView();
+}
+
+async function toggleGroupHidden(tag) {
+  const g = state.groupsList.find((x) => x.group_tag === tag);
+  const next = !(g && g.hidden);
+  await j(`/api/groups/${encodeURIComponent(tag)}/hidden`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ hidden: next }) });
+  await refreshGroups();
+  renderTree();
+}
+
+function toggleShowHidden() {
+  state.showHidden = !state.showHidden;
+  try { localStorage.setItem('saengbu_show_hidden', state.showHidden ? '1' : '0'); } catch (_) {}
+  renderTree();
 }
 
 async function onSearch() {
@@ -499,6 +541,7 @@ function areasFor(g) {
 
 async function openStudent(hakbun, group) {
   await saveIfDirty();
+  setSaveStatus('');
   if (group) { state.group = group; state.expanded.add(group); state.listCache = state.studsByGroup[group] || state.listCache; }
   state.hakbun = hakbun;
   state.student = await j('/api/students/' + encodeURIComponent(hakbun));
@@ -1632,11 +1675,17 @@ async function saveRecord(silent) {
     state.dirty = false;
     await loadList();
     if (!silent) showToast('✓ 저장됨');
+    setSaveStatus('저장됨 · ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }));
     return true;
   } catch (e) {
     showToast('저장 실패 — 연결을 확인하세요 (입력은 유지됨)');
     return false;
   }
+}
+
+function setSaveStatus(text) {
+  const el = $('#saveStatus');
+  if (el) el.textContent = text;
 }
 
 async function saveIfDirty() {
@@ -1716,8 +1765,9 @@ async function renderDash() {
   const writeCell = (r, c) => `<button class="gowrite" data-h="${esc(r.hakbun)}" data-g="${esc(state.group)}" data-a="${esc(c.area)}">쓰러 가기 ▶</button>`;
   const barCell = (c) => `<td class="barcol"><div class="dbar"><div class="dfill" style="width:${Math.min(100, c.pct)}%"></div></div></td>`;
   const byteCell = (c) => `<td class="abytes">${c.bytes} / ${c.limit || state.targets[c.area] || 0} B</td>`;
+  const updatedCell = (c) => `<td class="aupdated" title="${c.updated_at ? esc(c.updated_at) : ''}">${c.updated_at ? relTime(c.updated_at) : '—'}</td>`;
 
-  const head = '<tr><th>복사</th><th>학번</th><th>이름</th><th>영역</th><th>진행</th><th>바이트</th><th>쓰기</th></tr>';
+  const head = '<tr><th>복사</th><th>학번</th><th>이름</th><th>영역</th><th>진행</th><th>바이트</th><th>수정</th><th>쓰기</th></tr>';
   let rows;
   if (areaSel) {
     rows = d.rows.map((r) => {
@@ -1728,7 +1778,7 @@ async function renderDash() {
         + `<td class="copycol">${copyCell(r, c)}</td>`
         + `<td class="hakbun">${esc(r.disp || dispH(r.hakbun))}</td><td class="sname">${esc(r.name)}</td>`
         + areaCell(c)
-        + barCell(c) + byteCell(c)
+        + barCell(c) + byteCell(c) + updatedCell(c)
         + `<td class="writecol">${writeCell(r, c)}</td></tr>`;
     }).join('');
   } else {
@@ -1742,7 +1792,7 @@ async function renderDash() {
         return `<tr class="arow-tr ${fillCls(c)}${dim}${i === 0 ? ' stu-first' : ''}">`
           + `<td class="copycol">${copyCell(r, c)}</td>${who}`
           + areaCell(c)
-          + barCell(c) + byteCell(c)
+          + barCell(c) + byteCell(c) + updatedCell(c)
           + `<td class="writecol">${writeCell(r, c)}</td></tr>`;
       }).join('');
     }).join('');
