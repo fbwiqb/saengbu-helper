@@ -2,8 +2,12 @@ name: release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+    paths:
+      - 'package.json'
 
 jobs:
   build:
@@ -17,11 +21,15 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm test
+      - run: node --check public/app.js
       - run: npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set release notes from commit message
         shell: bash
-        run: gh release edit "${{ github.ref_name }}" --notes "$(git log -1 --pretty=%B HEAD)"
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          git log -1 --pretty=%B HEAD > release-notes.txt
+          gh release edit "$tag" --notes-file release-notes.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

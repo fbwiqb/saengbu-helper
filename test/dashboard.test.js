@@ -69,7 +69,7 @@ test('dashboardData 셀에 그룹별 바이트 한도 반영', () => {
   upsertStudent(db, { hakbun: 'A', name: '가', group_tag: '통합과학1' });
   upsertGroup(db, '통합과학1', '세특');
   setGroupByte(db, '통합과학1', 750);
-  upsertRecord(db, { hakbun: 'A', area: '세특', subject: '통합과학1', body: 'x', bytes: 750, status: '완료' });
+  upsertRecord(db, { hakbun: 'A', area: '세특', subject: '통합과학1', body: 'x'.repeat(750), bytes: 750, status: '완료' });
   const d = dashboardData(db, '통합과학1');
   const cell = d.rows[0].cells[0];
   assert.strictEqual(cell.limit, 750);

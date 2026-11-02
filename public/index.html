@@ -50,7 +50,9 @@
     </section>
 
     <section id="dashView" hidden>
-      <h2>그룹 진행률</h2>
+      <div class="dash-title"><h2>작성 현황</h2><span class="muted">전체 그룹의 저장된 기록 기준 · 진로 희망분야 포함</span></div>
+      <div id="dashTotals" class="byte-totals" aria-label="전체 작성 바이트 현황" aria-live="polite"></div>
+      <div class="dash-scope"><label for="dashScope">표시 범위</label><select id="dashScope"><option value="group">현재 그룹</option><option value="active">활성 그룹</option><option value="hidden">숨긴 그룹</option><option value="all">전체 그룹</option></select><span id="dashScopeNote" class="muted"></span></div>
       <div class="dash-head" id="dashProg"></div>
       <div class="dash-areas" id="dashAreas"></div>
       <div class="dashfilter">
@@ -92,7 +94,7 @@
       </div>
       <div class="setpane" data-pane="upload" hidden>
       <h2>학생 템플릿 업로드</h2>
-      <p class="muted">양식의 <b>시트(담임/세특/동아리/기타)</b>와 <b>열(과목명·동아리명·구분)</b>로 분류·그룹이 자동 결정됩니다. 한 파일에 여러 시트를 채우면 여러 그룹이 한 번에 등록됩니다.</p>
+       <p class="muted">양식의 <b>시트(담임/세특/동아리/기타)</b>와 <b>열(과목명·동아리명·구분)</b>로 그룹이 결정됩니다. <b>학생별한도·머리말</b> 열을 채우면 학생마다 다른 한도를 한 번에 등록할 수 있습니다. 빈 한도는 기존 설정을 유지합니다.</p>
       <div class="upload-form card">
         <div class="tmpl-cats">양식 시트 선택:
           <label><input type="checkbox" class="tmpl-cat" value="담임" checked> 담임</label>
@@ -203,6 +205,8 @@
             <div class="glabel"><span id="gaugeArea"></span><span id="gaugeText" class="gnum"></span></div>
             <div class="track"><div id="gaugeFill"></div></div>
           </div>
+          <div id="studentBudgetBar" class="student-budget-bar" hidden><span id="studentBudgetLabel"></span><button id="editStudentBudget" class="btn-ghost" type="button">학생 한도 설정</button></div>
+          <div id="prefixGuide" class="prefix-guide" hidden><span id="prefixGuideText"></span><button id="insertPrefix" class="btn-ghost" type="button">머리말 넣기</button></div>
           <div class="editbar">
             <span id="phraseBtns" class="phrase-btns"></span>
             <button id="sentToggle" class="btn-ghost">문장별 보기</button>
@@ -261,6 +265,20 @@
       </div>
     </section>
   </main>
+
+  <div id="budgetModal" class="budget-back" hidden>
+    <form id="budgetForm" class="budget-dialog" role="dialog" aria-modal="true" aria-labelledby="budgetTitle">
+      <div class="budget-title"><h3 id="budgetTitle">학생별 바이트 한도</h3><button id="budgetClose" class="btn-ghost" type="button" aria-label="한도 설정 닫기">닫기</button></div>
+      <p id="budgetWho" class="muted"></p>
+      <label for="budgetLimit">학생별 전체 한도 (B)</label>
+      <input id="budgetLimit" type="number" min="1" max="30000" step="1" placeholder="비우면 그룹 기본값" />
+      <label class="prefix-check" for="budgetPrefix"><input id="budgetPrefix" type="checkbox" /> <span id="budgetPrefixLabel">(2학기) 머리말 사용 · 10 B</span></label>
+      <p id="budgetPreview" class="budget-preview"></p>
+      <p class="muted">한도는 머리말을 포함한 전체 글의 바이트입니다. 본문 내용은 변경하지 않습니다.</p>
+      <p id="budgetError" class="budget-error" role="alert"></p>
+      <div class="budget-actions"><button id="budgetReset" class="btn-ghost" type="button">그룹 기본값 사용</button><button id="budgetSave" class="btn-primary" type="submit">저장</button></div>
+    </form>
+  </div>
 
   <div id="gfBack" class="gfind-back" hidden>
     <div class="gfind">

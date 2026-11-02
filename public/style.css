@@ -740,3 +740,44 @@ ins.kwins { color: #1c6b42; text-decoration: none; font-weight: 800; background:
   background: var(--red-bg); border: 1px solid #e8c3b7; color: #8f3527; }
 .gf-warn.ok { background: var(--accent-soft); border-color: #cfe2da; color: var(--accent-ink); }
 .gf-foot { display: flex; gap: 7px; padding: 11px 16px; border-top: 1px solid var(--line); background: var(--surface-2); }
+/* Dashboard totals and individual writing budgets */
+.dash-title { display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
+.dash-title h2 { margin:0; }
+.dash-title > .muted { font-size:12px; }
+.byte-totals { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-bottom:20px; }
+.byte-total { text-align:left; font:inherit; border:1px solid var(--line); background:var(--surface); border-radius:14px; padding:18px 20px; cursor:pointer; color:var(--ink); display:flex; flex-direction:column; gap:8px; }
+.byte-total:hover, .byte-total.selected { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+.byte-total.total { background:var(--accent); border-color:var(--accent); color:white; }
+.byte-total.active { background:#edf5ef; }
+.byte-total.hidden { background:#f1f0ed; }
+.byte-total-label { font-size:13px; font-weight:600; }
+.byte-total strong { font-size:29px; line-height:1.2; letter-spacing:-.8px; font-variant-numeric:tabular-nums; }
+.byte-total strong small { font-size:14px; font-weight:500; letter-spacing:0; }
+.byte-total-meta { font-size:12px; opacity:.75; }
+.dash-scope { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:14px; }
+.dash-scope label { font-size:13px; font-weight:600; }
+.dash-scope .muted { font-size:12px; }
+.dash-group-label { display:block; font-size:11px; font-weight:400; color:var(--ink-faint); white-space:normal; margin-top:4px; }
+.byte-remaining { display:block; font-size:11px; opacity:.8; margin-top:3px; }
+.budget-edit { display:inline-block; background:none; border:0; border-bottom:1px solid currentColor; padding:2px 0; margin-top:5px; color:var(--accent); cursor:pointer; font:inherit; font-size:11px; }
+.student-budget-bar { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:12px; padding-top:10px; color:var(--ink-soft); }
+.student-budget-bar .btn-ghost, .prefix-guide .btn-ghost { font-size:11px; padding:5px 9px; }
+.prefix-guide { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 10px; margin-top:8px; border-radius:8px; background:#edf3ef; color:var(--ink-soft); font-size:12px; }
+.budget-back { position:fixed; inset:0; z-index:4000; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(18,34,29,.35); }
+.budget-dialog { width:460px; max-width:100%; padding:24px; border-radius:16px; background:var(--surface); box-shadow:0 12px 50px rgba(0,0,0,.18); }
+.budget-title { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.budget-title h3 { margin:0; }
+.budget-dialog label { display:block; margin:16px 0 7px; font-size:13px; font-weight:600; }
+.budget-dialog > input { box-sizing:border-box; width:100%; }
+.budget-dialog .prefix-check, .mg-prefix-label { display:flex; align-items:center; gap:7px; font-size:12px; white-space:nowrap; }
+.budget-dialog .prefix-check input, .mg-prefix-label input { width:auto; accent-color:var(--accent); }
+.mg-row { flex-wrap:wrap; }
+.budget-dialog p { font-size:12px; line-height:1.6; }
+.budget-preview { background:#edf3ef; color:var(--accent); padding:12px; border-radius:8px; }
+.budget-error { color:var(--red); }
+.budget-actions { display:flex; justify-content:space-between; gap:12px; margin-top:20px; }
+.up-prefix { display:block; font-size:10px; white-space:normal; margin-top:4px; color:var(--ink-soft); }
+.up-tbl .up-budget { min-width:76px; }
+.student-budget-bar[hidden], .prefix-guide[hidden], .budget-back[hidden] { display:none; }
+@media (max-width:900px) { .byte-totals { gap:8px; } .byte-total { padding:14px 12px; } .byte-total strong { font-size:23px; } }
+@media (max-width:600px) { .byte-totals { grid-template-columns:1fr; } .student-budget-bar, .prefix-guide { flex-wrap:wrap; } }

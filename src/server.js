@@ -159,6 +159,12 @@ function createApp(db) {
     const v = db_.setGroupHidden(db, req.params.tag, (req.body || {}).hidden);
     res.json({ ok: true, hidden: v });
   });
+  app.put('/api/groups/:tag/prefix', (req, res) => {
+    try {
+      if (typeof (req.body || {}).enabled !== 'boolean') throw new Error('머리말 사용 여부를 선택하세요');
+      res.json({ ok: true, required_prefix: db_.setGroupPrefix(db, req.params.tag, req.body.enabled) });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
   app.delete('/api/students/:hakbun/membership/:tag', (req, res) => {
     db_.removeMembership(db, req.params.hakbun, req.params.tag);
     res.json({ ok: true });
@@ -168,8 +174,10 @@ function createApp(db) {
     const { group_tag, category, students } = req.body || {};
     if (!group_tag) return res.status(400).json({ error: 'group_tag 필요' });
     if (!Array.isArray(students) || !students.length) return res.status(400).json({ error: '학생 목록 필요' });
-    const added = db_.bulkAddStudents(db, group_tag, category, students);
-    res.json({ ok: true, added, group_tag });
+    try {
+      const added = db_.bulkAddStudents(db, group_tag, category, students);
+      res.json({ ok: true, added, group_tag });
+    } catch (e) { res.status(400).json({ error: e.message }); }
   });
 
   app.post('/api/verify', (req, res) => {
@@ -215,8 +223,24 @@ function createApp(db) {
   });
 
   app.put('/api/students/:hakbun', (req, res) => {
-    db_.upsertStudent(db, { ...req.body, hakbun: req.params.hakbun });
-    res.json(db_.getStudent(db, req.params.hakbun));
+    try {
+      db_.upsertStudent(db, { ...req.body, hakbun: req.params.hakbun });
+      res.json(db_.getStudent(db, req.params.hakbun));
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
+  app.put('/api/students/:hakbun/budget', (req, res) => {
+    const student = db_.getStudent(db, req.params.hakbun);
+    if (!student) return res.status(404).json({ error: '학생이 없습니다' });
+    if (!['세특', '동아리', '기타'].includes(db_.getCategory(db, student.group_tag))) return res.status(400).json({ error: '과목별 학생 한도만 설정할 수 있습니다' });
+    try {
+      const budget = {};
+      for (const key of ['byte_limit', 'required_prefix', 'neis_existing_bytes']) {
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) budget[key] = req.body[key];
+      }
+      db_.upsertStudent(db, { hakbun: student.hakbun, ...budget });
+      res.json(db_.getStudent(db, student.hakbun));
+    } catch (e) { res.status(400).json({ error: e.message }); }
   });
 
   app.delete('/api/students/:hakbun', (req, res) => {
@@ -258,6 +282,19 @@ function createApp(db) {
   });
 
   app.get('/api/dashboard', (req, res) => res.json(db_.dashboardData(db, req.query.group)));
+  app.get('/api/dashboard-totals', (_req, res) => res.json(db_.dashboardTotals(db)));
+  app.get('/api/dashboard-all', (req, res) => {
+    const scope = req.query.scope || 'all';
+    if (!['all', 'active', 'hidden'].includes(scope)) return res.status(400).json({ error: '보기 범위가 올바르지 않습니다' });
+    const groups = db_.listGroupsDetailed(db).filter(g => scope === 'all' || (scope === 'hidden' ? !!g.hidden : !g.hidden));
+    const dashboards = groups.map(g => db_.dashboardData(db, g.group_tag));
+    const summary = { 미작성: 0, 초안: 0, 검증: 0, 완료: 0 };
+    for (const d of dashboards) for (const key of Object.keys(summary)) summary[key] += d.summary[key] || 0;
+    const totalCells = dashboards.reduce((n, d) => n + d.totalCells, 0);
+    res.json({ rows: dashboards.flatMap(d => d.rows.map(r => ({ ...r, group: d.group }))),
+      areas: [...new Set(dashboards.flatMap(d => d.areas))], summary, totalCells,
+      completion: totalCells ? Math.round(summary['완료'] / totalCells * 1000) / 10 : 0 });
+  });
   app.get('/api/all-records', (req, res) => res.json(db_.allRecords(db)));
   app.get('/api/history/:hakbun/:area', (req, res) => res.json(db_.editsFor(db, req.params.hakbun, req.params.area, req.query.subject || '')));
 

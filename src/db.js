@@ -111,11 +111,15 @@ function migrateGroups(db) {
   const cols = new Set(db.prepare('PRAGMA table_info(groups)').all().map((c) => c.name));
   if (!cols.has('byte_limit')) db.exec('ALTER TABLE groups ADD COLUMN byte_limit INTEGER');
   if (!cols.has('hidden')) db.exec('ALTER TABLE groups ADD COLUMN hidden INTEGER DEFAULT 0');
+  if (!cols.has('required_prefix')) db.exec('ALTER TABLE groups ADD COLUMN required_prefix TEXT');
 }
 
 function migrateStudentsOrd(db) {
   const cols = new Set(db.prepare('PRAGMA table_info(students)').all().map((c) => c.name));
   if (!cols.has('ord')) db.exec('ALTER TABLE students ADD COLUMN ord INTEGER');
+  for (const [name, type] of [['byte_limit', 'INTEGER'], ['required_prefix', 'TEXT'], ['neis_existing_bytes', 'INTEGER']]) {
+    if (!cols.has(name)) db.exec(`ALTER TABLE students ADD COLUMN ${name} ${type}`);
+  }
 }
 
 function setStudentOrder(db, keys) {
@@ -248,7 +252,8 @@ function upsertGroup(db, group, category) {
 }
 
 function listGroupsDetailed(db) {
-  return db.prepare(`SELECT g.group_tag, g.category, g.byte_limit, g.hidden,
+  return db.prepare(`SELECT g.group_tag, g.category, g.byte_limit, g.hidden, g.required_prefix,
+      (SELECT COUNT(*) FROM students s WHERE s.group_tag=g.group_tag AND s.required_prefix='(2학기) ') prefix_count,
       (SELECT COUNT(*) FROM memberships m WHERE m.group_tag=g.group_tag) n
     FROM groups g ORDER BY g.category, g.group_tag`).all();
 }
@@ -265,9 +270,13 @@ function setGroupHidden(db, tag, hidden) {
   return !!v;
 }
 
-function limitForGroup(db, group, area) {
+function limitForGroup(db, group, area, hakbun) {
   const row = db.prepare('SELECT category, byte_limit FROM groups WHERE group_tag=?').get(group);
-  if (row && row.byte_limit && PER_SUBJECT_CATEGORIES.has(row.category)) return row.byte_limit;
+  if (row && PER_SUBJECT_CATEGORIES.has(row.category)) {
+    const student = hakbun && db.prepare('SELECT byte_limit FROM students WHERE hakbun=? AND group_tag=?').get(hakbun, group);
+    if (student && student.byte_limit != null) return student.byte_limit;
+    if (row.byte_limit) return row.byte_limit;
+  }
   return limitFor(db, area);
 }
 
@@ -367,6 +376,14 @@ function limitFor(db, area) {
 }
 
 function upsertStudent(db, s) {
+  const budget = studentBudget(s);
+  const existing = db.prepare('SELECT * FROM students WHERE hakbun=?').get(s.hakbun);
+  if (!existing && !Object.prototype.hasOwnProperty.call(budget, 'required_prefix') && s.group_tag) {
+    const group = db.prepare('SELECT required_prefix FROM groups WHERE group_tag=?').get(s.group_tag);
+    if (group && group.required_prefix) budget.required_prefix = group.required_prefix;
+  }
+  const combined = { ...existing, ...budget };
+  if (combined.byte_limit != null && calcBytes(combined.required_prefix || '') > combined.byte_limit) throw new Error('머리말이 학생 한도를 초과합니다');
   db.prepare(`INSERT INTO students (hakbun,name,group_tag,ban,beonho,gender,naesin,jeonhyeong,status)
     VALUES (@hakbun,@name,@group_tag,@ban,@beonho,@gender,@naesin,@jeonhyeong,COALESCE(@status,'미작성'))
     ON CONFLICT(hakbun) DO UPDATE SET name=COALESCE(excluded.name, students.name),
@@ -375,9 +392,42 @@ function upsertStudent(db, s) {
       gender=COALESCE(excluded.gender, students.gender), naesin=COALESCE(excluded.naesin, students.naesin),
       jeonhyeong=COALESCE(excluded.jeonhyeong, students.jeonhyeong), updated_at=datetime('now')`)
     .run({ name: null, group_tag: null, ban: null, beonho: null, gender: null, naesin: null, jeonhyeong: null, status: null, ...s });
+  for (const [field, value] of Object.entries(budget)) {
+    db.prepare(`UPDATE students SET ${field}=? WHERE hakbun=?`).run(value, s.hakbun);
+  }
   if (s.group_tag) {
     db.prepare('INSERT OR IGNORE INTO memberships (hakbun, group_tag) VALUES (?, ?)').run(s.hakbun, s.group_tag);
   }
+}
+
+function studentBudget(input) {
+  const out = {};
+  for (const field of ['byte_limit', 'required_prefix', 'neis_existing_bytes']) {
+    if (!Object.prototype.hasOwnProperty.call(input, field)) continue;
+    const value = input[field];
+    if (field === 'required_prefix') {
+      if (value != null && (typeof value !== 'string' || value.length > 100)) throw new Error('머리말은 100자 이내로 입력하세요');
+      out[field] = value || null;
+    } else {
+      if (value == null || value === '') { out[field] = null; continue; }
+      const n = Number(value);
+      if (!Number.isSafeInteger(n) || n < (field === 'byte_limit' ? 1 : 0) || n > 30000 || typeof value === 'boolean') throw new Error('바이트 값은 올바른 정수여야 합니다 (한도 1~30000)');
+      out[field] = n;
+    }
+  }
+  return out;
+}
+
+function setGroupPrefix(db, tag, enabled) {
+  return db.transaction(() => {
+    const group = db.prepare('SELECT category FROM groups WHERE group_tag=?').get(tag);
+    if (!group || !PER_SUBJECT_CATEGORIES.has(group.category)) throw new Error('과목 그룹의 머리말만 설정할 수 있습니다');
+    const prefix = enabled ? '(2학기) ' : null;
+    if (prefix && db.prepare('SELECT 1 FROM students WHERE group_tag=? AND byte_limit IS NOT NULL AND byte_limit<?').get(tag, calcBytes(prefix))) throw new Error('일부 학생의 한도가 머리말 10 B보다 작습니다');
+    db.prepare('UPDATE groups SET required_prefix=? WHERE group_tag=?').run(prefix, tag);
+    db.prepare("UPDATE students SET required_prefix=?,updated_at=datetime('now') WHERE group_tag=?").run(prefix, tag);
+    return prefix;
+  })();
 }
 
 function listStudents(db, group) {
@@ -476,9 +526,9 @@ function hopeBytesOf(rec, area) {
   return area === '진로' && rec && rec.hope_field ? calcBytes(String(rec.hope_field).trim()) : 0;
 }
 
-function statusBytes(db, group, rec, area) {
-  const limit = limitForGroup(db, group, area);
-  const bytes = (rec ? (rec.bytes || 0) : 0) + hopeBytesOf(rec, area);
+function statusBytes(db, group, rec, area, hakbun) {
+  const limit = limitForGroup(db, group, area, hakbun);
+  const bytes = (rec ? calcBytes(rec.revised || rec.body || '') : 0) + hopeBytesOf(rec, area);
   const pct = limit ? Math.round((bytes / limit) * 1000) / 10 : 0;
   return { bytes, pct, limit };
 }
@@ -492,18 +542,49 @@ function dashboardData(db, group) {
     const cells = areas.map(({ area, subject }) => {
       const rec = recs.find((r) => r.area === area && r.subject === subject);
       const status = rec ? (rec.status || '미작성') : '미작성';
-      const { bytes, pct, limit } = statusBytes(db, group, rec, area);
+      const { bytes, pct, limit } = statusBytes(db, group, rec, area, s.hakbun);
       if (summary[status] !== undefined) summary[status] += 1;
       return { area, subject, status, bytes, pct, limit,
         hope: area === '진로' && rec ? String(rec.hope_field || '').trim() : '',
         body: rec ? (rec.revised || rec.body || '') : '',
         updated_at: rec ? rec.updated_at : null };
     });
-    return { hakbun: s.hakbun, disp: s.disp, name: s.name, cells };
+    return { hakbun: s.hakbun, disp: s.disp, name: s.name, byte_limit: s.byte_limit, required_prefix: s.required_prefix, cells };
   });
   const totalCells = rows.length * areas.length;
   const completion = totalCells ? Math.round((summary['완료'] / totalCells) * 1000) / 10 : 0;
   return { group, areas: areas.map((a) => a.area), rows, summary, totalCells, completion };
+}
+
+function dashboardTotals(db) {
+  const groups = listGroupsDetailed(db);
+  const groupInfo = new Map(groups.map(g => [g.group_tag, g]));
+  const memberships = new Map();
+  for (const m of db.prepare('SELECT hakbun,group_tag FROM memberships').all()) {
+    if (!memberships.has(m.hakbun)) memberships.set(m.hakbun, []);
+    memberships.get(m.hakbun).push(m.group_tag);
+  }
+  const students = new Map(db.prepare('SELECT hakbun,group_tag FROM students').all().map(s => [s.hakbun, s]));
+  const total = { bytes: 0, records: 0, groups: groups.length };
+  const active = { bytes: 0, records: 0, groups: groups.filter(g => !g.hidden).length };
+  const hidden = { bytes: 0, records: 0, groups: groups.filter(g => g.hidden).length };
+  for (const rec of db.prepare('SELECT * FROM records').all()) {
+    const bytes = calcBytes(rec.revised || rec.body || '') + hopeBytesOf(rec, rec.area);
+    if (!bytes) continue;
+    let owners = (memberships.get(rec.hakbun) || []).filter(tag => {
+      const info = groupInfo.get(tag);
+      return info && (PER_SUBJECT_CATEGORIES.has(info.category) ? rec.subject === tag : !rec.subject);
+    });
+    if (!owners.length) {
+      const fallback = groupInfo.get(rec.subject) || groupInfo.get((students.get(rec.hakbun) || {}).group_tag);
+      if (fallback) owners = [fallback.group_tag];
+    }
+    // Unassigned records remain included; shared records count once, preferring an active group.
+    const bucket = owners.length && owners.every(tag => groupInfo.get(tag).hidden) ? hidden : active;
+    total.bytes += bytes; total.records += 1;
+    bucket.bytes += bytes; bucket.records += 1;
+  }
+  return { total, active, hidden };
 }
 
 function allRecords(db) {
@@ -519,7 +600,7 @@ function allRecords(db) {
     const body = r.revised || r.body || '';
     return { key, hakbun: hak, group, name: r.name || '', area: r.area, subject: r.subject || '',
       body, bytes: r.bytes || 0, status: r.status || '미작성',
-      limit: limitForGroup(db, group, r.area) };
+      limit: limitForGroup(db, group, r.area, r.hakbun) };
   }).filter((r) => r.body.trim());
 }
 
@@ -566,8 +647,8 @@ function splitStudentName(raw) {
 }
 
 function bulkAddStudents(db, group, category, rows) {
-  upsertGroup(db, group, category);
   const tx = db.transaction((list) => {
+    upsertGroup(db, group, category);
     let added = 0;
     for (const r of list) {
       const disp = String(r.hakbun || r['학번'] || '').trim();
@@ -586,6 +667,7 @@ function bulkAddStudents(db, group, category, rows) {
         gender: r.gender || r['성별'] || null,
         naesin,
         jeonhyeong: r.jeonhyeong || r['전형'] || null,
+        ...studentBudget(r),
       });
       added += 1;
     }
@@ -596,8 +678,8 @@ function bulkAddStudents(db, group, category, rows) {
 
 module.exports = {
   open, upsertStudent, listStudents, listGroups, getStudent, upsertRecord, replaceBooks, deleteStudent,
-  dashboardData, allRecords, editsFor, areasForGroup,
+  dashboardData, dashboardTotals, allRecords, editsFor, areasForGroup,
   getAreasConfig, setAreasConfig, getSpellIgnore, saveSpellIgnore, addSpellIgnore, getCategory, upsertGroup, listGroupsDetailed, limitFor, limitForGroup, setGroupByte, setGroupHidden, bulkAddStudents,
-  deleteGroup, removeMembership, renameGroup, setStudentOrder,
+  deleteGroup, removeMembership, renameGroup, setStudentOrder, setGroupPrefix,
   CATEGORIES, DEFAULT_AREAS_CONFIG, studentKey, dispHakbun,
 };

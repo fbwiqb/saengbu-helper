@@ -1,6 +1,6 @@
 {
   "name": "saengbu-helper",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "private": true,
   "type": "commonjs",
   "main": "main.js",
@@ -48,7 +48,9 @@
       "publisherDisplayName": "신도경",
       "displayName": "생기부 입력 도우미",
       "backgroundColor": "transparent",
-      "languages": ["ko-KR"]
+      "languages": [
+        "ko-KR"
+      ]
     },
     "nsis": {
       "oneClick": false,
