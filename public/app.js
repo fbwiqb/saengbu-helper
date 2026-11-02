@@ -162,7 +162,794 @@ function groupByteLimit(g) {
 
 function activeLimit(area, g) {
   const group = g || state.group;
-  if (PER_SUBJECT.has(catFor(group)) && state.student && state.student.group_tag === group && state.student.byte_limit != null) return state.s…9672 tokens truncated…ls = veryLong ? 'sent vlong' : long ? 'sent long' : 'sent';
+  if (PER_SUBJECT.has(catFor(group)) && state.student && state.student.group_tag === group && state.student.byte_limit != null) return state.student.byte_limit;
+  return groupByteLimit(group) || state.targets[area] || 0;
+}
+
+async function copyArea() {
+  const text = $('#body').value;
+  const ok = await copyText(text, state.area, '', activeLimit(state.area), hopeBytes());
+  if (ok && state.hakbun && state.area) markCopied(cellKey(state.hakbun, state.area, state.subject), text);
+  return ok;
+}
+
+async function boot() {
+  state.config = await j('/api/config');
+  try { state.spellIgnore = new Set(await j('/api/spell-ignore')); } catch (e) { state.spellIgnore = new Set(); }
+  try { state.phrases = await j('/api/common-phrases'); } catch (e) { state.phrases = []; }
+  buildTargets();
+  await refreshGroups();
+  $('#body').addEventListener('input', () => {
+    state.dirty = true;
+    setSaveStatus('저장 안 된 변경 있음');
+    renderGauge();
+    clearTimeout(state.assistTimer);
+    state.assistTimer = setTimeout(renderAssist, 180);
+  });
+  $('#hopeField').addEventListener('input', () => { state.dirty = true; setSaveStatus('저장 안 된 변경 있음'); renderGauge(); });
+  bindSelByte();
+  ['#kwInput', '#kwFrom', '#kwTo'].forEach((sel) => $(sel).addEventListener('input', renderKeyword));
+  $('#openGlobalFind').onclick = () => gfOpen('find', kwList()[0] || '');
+  $('#dashFindBtn').onclick = () => gfOpen('find');
+  $('#gfTabFind').onclick = () => gfSetMode('find');
+  $('#gfTabRep').onclick = () => gfSetMode('rep');
+  $('#gfQ').addEventListener('input', gfRender);
+  $('#gfR').addEventListener('input', gfRender);
+  $('#gfScope').addEventListener('change', gfRender);
+  $('#gfClose').onclick = gfClose;
+  $('#gfApply').onclick = gfApply;
+  $('#gfBack').addEventListener('click', (e) => { if (e.target === $('#gfBack')) gfClose(); });
+  $('#spellPanel').addEventListener('click', (ev) => {
+    const more = ev.target.closest('.sp-more');
+    if (more) { const i = Number(more.dataset.idx); if (state.spellErrors[i]) { state.spellErrors[i].helpOpen = !state.spellErrors[i].helpOpen; renderSpellPanel(); } return; }
+    const apply = ev.target.closest('.sp-apply');
+    if (apply) { applySpell(Number(apply.dataset.idx)); return; }
+    const dismiss = ev.target.closest('.sp-dismiss');
+    if (dismiss) { dismissSpell(Number(dismiss.dataset.idx)); return; }
+    if (ev.target.closest('.sp-cand')) return;
+    const row = ev.target.closest('.spell-item');
+    if (row) toggleSpellHighlight(Number(row.dataset.idx));
+  });
+  $('#spellPanel').addEventListener('change', (ev) => {
+    const sel = ev.target.closest('.sp-cand');
+    if (sel && state.spellErrors[Number(sel.dataset.idx)]) state.spellErrors[Number(sel.dataset.idx)].choice = sel.value;
+  });
+  $('#fbdPanel').addEventListener('click', (ev) => {
+    const apply = ev.target.closest('.fbd-apply');
+    if (apply) { applyForbid(Number(apply.dataset.idx)); return; }
+    const dismiss = ev.target.closest('.fbd-dismiss');
+    if (dismiss) { dismissForbid(Number(dismiss.dataset.idx)); return; }
+    const row = ev.target.closest('.fbd-item');
+    if (row) toggleForbidHighlight(Number(row.dataset.idx));
+  });
+  $('#saveBtn').onclick = () => saveRecord();
+  $('#statusChip').onclick = cycleStatus;
+  $('#copyBtn').onclick = copyArea;
+  $('#spellBtn').onclick = () => { runForbidden(); runSpell(); };
+  $('#histBtn').onclick = openHistory;
+  $('#histClose').onclick = closeHistory;
+  $('#histModal').onclick = (e) => { if (e.target === $('#histModal')) closeHistory(); };
+  $('#helpBtn').onclick = openHelp;
+  $('#helpClose').onclick = closeHelp;
+  $('#helpHide').onchange = (e) => { try { if (e.target.checked) localStorage.setItem('saengbu_help_hidden', '1'); else localStorage.removeItem('saengbu_help_hidden'); } catch (_) {} };
+  $('#helpPrev').onclick = () => helpNav(-1);
+  $('#helpNext').onclick = () => helpNav(1);
+  $('#helpModal').onclick = (e) => { if (e.target === $('#helpModal')) closeHelp(); };
+  $('#updNotes').onclick = openNotes;
+  $('#notesClose').onclick = closeNotes;
+  $('#notesModal').onclick = (e) => { if (e.target === $('#notesModal')) closeNotes(); };
+  $('#nextBtn').onclick = gotoNextUnwritten;
+  $('#sentToggle').onclick = toggleSentMode;
+  $('#dejoinBtn').onclick = dejoinBody;
+  $('#vStudent').onclick = async () => { await saveIfDirty(); setView('student'); };
+  $('#vDash').onclick = async () => { await saveIfDirty(); setView('dash'); };
+  $('#vSettings').onclick = async () => { await saveIfDirty(); setView('settings'); };
+  $('#dashFilter').onchange = renderDash;
+  $('#dashScope').onchange = renderDash;
+  $('#editStudentBudget').onclick = () => openBudget(state.hakbun);
+  $('#insertPrefix').onclick = () => {
+    const prefix = state.student && state.student.required_prefix;
+    if (!prefix || $('#body').value.startsWith(prefix)) return;
+    $('#body').value = prefix + $('#body').value;
+    state.dirty = true;
+    setSaveStatus('저장 안 된 변경 있음');
+    renderAssist();
+  };
+  $('#budgetClose').onclick = closeBudget;
+  $('#budgetModal').onclick = e => { if (e.target === $('#budgetModal')) closeBudget(); };
+  $('#budgetForm').onsubmit = saveBudget;
+  $('#budgetLimit').oninput = budgetPreview;
+  $('#budgetPrefix').onchange = budgetPreview;
+  $('#budgetReset').onclick = () => { $('#budgetLimit').value = ''; budgetPreview(); };
+  $('#budgetForm').onkeydown = e => {
+    if (e.key !== 'Tab') return;
+    const fields = [...$('#budgetForm').querySelectorAll('button,input')].filter(el => !el.disabled && !el.hidden);
+    const first = fields[0], last = fields[fields.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  $('#dashExport').onclick = openExport;
+  $('#exportClose').onclick = closeExport;
+  $('#exportCancel').onclick = closeExport;
+  $('#exportModal').onclick = (e) => { if (e.target === $('#exportModal')) closeExport(); };
+  $('#exportGo').onclick = runExport;
+  $('#dashImport').onclick = () => $('#dashImportFile').click();
+  $('#dashImportFile').onchange = (e) => { const f = e.target.files[0]; if (f) importDash(f); e.target.value = ''; };
+  $('#cfgSave').onclick = saveConfig;
+  document.querySelectorAll('.settab').forEach((b) => { b.onclick = () => selectSetPane(b.dataset.t); });
+  $('#tmplLink').onclick = downloadTemplate;
+  $('#openFolderBtn').onclick = openDataFolder;
+  $('#resetDataBtn').onclick = resetData;
+  $('#fbBug').onclick = () => openFb('bug');
+  $('#fbFeat').onclick = () => openFb('feat');
+  $('#fbClose').onclick = closeFb;
+  $('#fbCancel').onclick = closeFb;
+  $('#fbModal').onclick = (e) => { if (e.target === $('#fbModal')) closeFb(); };
+  $('#fbSend').onclick = submitFb;
+  $('#phraseAdd').onclick = phraseAdd;
+  $('#phraseSave').onclick = phraseSave;
+  $('#bakExportBtn').onclick = exportBackup;
+  $('#bakImportBtn').onclick = importBackup;
+  const dz = $('#dropzone');
+  dz.onclick = () => $('#upFile').click();
+  dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('drag'); };
+  dz.ondragleave = () => dz.classList.remove('drag');
+  dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('drag'); const f = e.dataTransfer.files[0]; if (f) previewUpload(f); };
+  $('#upFile').onchange = (e) => { const f = e.target.files[0]; if (f) previewUpload(f); };
+  $('#upAddStuBtn').onclick = addUpStudent;
+  $('#upRegisterBtn').onclick = confirmUpload;
+  $('#stuSearch').oninput = () => { clearTimeout(state.searchTimer); state.searchTimer = setTimeout(onSearch, 140); };
+  $('#sortSel').onchange = () => {
+    state.sortMode = $('#sortSel').value;
+    if (state.sortMode === 'custom') showToast('↕ 학생 이름을 드래그해 순서를 바꾸세요');
+    renderTree();
+  };
+  $('#hiddenToggle').onclick = toggleShowHidden;
+  document.addEventListener('keydown', onKey);
+  Object.defineProperty(window, '__appDirty', { get: () => !!state.dirty });
+  window.__flushSave = async () => { await saveIfDirty(); return !state.dirty; };
+  $('#quitBtn').onclick = () => window.close();
+  initUpdater();
+  try { if (!localStorage.getItem('saengbu_help_hidden') && !localStorage.getItem('saengbu_onboarded')) { openHelp(); localStorage.setItem('saengbu_onboarded', '1'); } } catch (e) { /* ignore */ }
+  if (!state.groupsList.length) { setView('settings'); return; }
+  if (state.group) state.expanded.add(state.group);
+  await loadList();
+  setView('student');
+}
+
+async function refreshGroups() {
+  const groups = await j('/api/groups');
+  state.groupsList = groups;
+  state.groupCat = {};
+  for (const g of groups) state.groupCat[g.group_tag] = g.category;
+  if (!state.group || !state.groupCat[state.group]) state.group = groups[0] ? groups[0].group_tag : null;
+}
+
+function setView(v) {
+  state.view = v;
+  $('#vStudent').classList.toggle('sel', v === 'student');
+  $('#vDash').classList.toggle('sel', v === 'dash');
+  $('#vSettings').classList.toggle('sel', v === 'settings');
+  $('#dashView').hidden = v !== 'dash';
+  $('#settingsView').hidden = v !== 'settings';
+  $('#head').hidden = v !== 'student' || !state.hakbun;
+  $('#tabs').hidden = v !== 'student' || !state.hakbun;
+  $('#editor').hidden = v !== 'student' || !state.hakbun;
+  $('#emptyState').hidden = !(v === 'student' && !state.hakbun);
+  if (v === 'student' && !state.hakbun) updateEmptyState();
+  refreshView();
+}
+
+function refreshView() {
+  if (state.view === 'dash') renderDash();
+  else if (state.view === 'settings') renderSettings();
+}
+
+async function loadGroup(g) {
+  state.studsByGroup[g] = await j('/api/students?group=' + encodeURIComponent(g));
+  return state.studsByGroup[g];
+}
+
+async function loadList() {
+  if (state.group) await loadGroup(state.group);
+  state.listCache = state.studsByGroup[state.group] || [];
+  renderTree();
+  if (state.view === 'student' && !state.hakbun) updateEmptyState();
+}
+
+function progRatio(s) {
+  const p = s.prog;
+  if (!p || !p.total) return -1;
+  return p.done / p.total;
+}
+
+function sortStuds(list) {
+  const byHak = (a, b) => String(a.disp || dispH(a.hakbun)).localeCompare(String(b.disp || dispH(b.hakbun)));
+  if (state.sortMode === 'custom') {
+    return list.sort((a, b) => ((a.ord == null ? Infinity : a.ord) - (b.ord == null ? Infinity : b.ord)) || byHak(a, b));
+  }
+  if (state.sortMode === 'unwritten') {
+    return list.sort((a, b) => progRatio(a) - progRatio(b) || byHak(a, b));
+  }
+  if (state.sortMode === 'name') {
+    return list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko') || byHak(a, b));
+  }
+  return list.sort(byHak);
+}
+
+function enableDrag(ul, group) {
+  ul.querySelectorAll('li[data-h]').forEach((li) => {
+    li.addEventListener('dragstart', (e) => { setTimeout(() => li.classList.add('dragging'), 0); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', li.dataset.h); } catch (_) {} });
+    li.addEventListener('dragend', () => { li.classList.remove('dragging'); persistOrder(ul, group); });
+  });
+  ul.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const cur = ul.querySelector('li.dragging');
+    if (!cur) return;
+    const rest = [...ul.querySelectorAll('li[data-h]:not(.dragging)')];
+    const after = rest.find((li) => { const r = li.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+    if (after) ul.insertBefore(cur, after); else ul.appendChild(cur);
+  });
+}
+
+async function persistOrder(ul, group) {
+  const keys = [...ul.querySelectorAll('li[data-h]')].map((li) => li.dataset.h);
+  const list = state.studsByGroup[group];
+  if (list) {
+    const byKey = {};
+    for (const s of list) byKey[s.hakbun] = s;
+    const reordered = keys.map((k) => byKey[k]).filter(Boolean);
+    for (const s of list) if (!keys.includes(s.hakbun)) reordered.push(s);
+    reordered.forEach((s, i) => { s.ord = i; });
+    state.studsByGroup[group] = reordered;
+    if (state.group === group) state.listCache = reordered;
+  }
+  try { await fetch('/api/students/order', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order: keys }) }); } catch (e) { /* noop */ }
+}
+
+function progBadge(s, isOpen) {
+  if (isOpen && state.view === 'student' && state.area && state.curStatus) {
+    return `<span class="badge prog-chip ${state.curStatus}" title="현재 영역 ${esc(state.area)} 상태 · 클릭해 순환">${esc(state.area)} ${state.curStatus}</span>`;
+  }
+  const p = s.prog;
+  if (!p || !p.total) return `<span class="badge prog-chip 미작성" title="열린 학생이면 클릭해 현재 영역 상태 순환">${esc(s.status || '미작성')}</span>`;
+  const st = p.done >= p.total ? '완료' : (p.started ? '초안' : '미작성');
+  return `<span class="badge prog-chip ${st}" title="완료 ${p.done} / 전체 ${p.total} · 열린 학생이면 클릭해 현재 영역 순환">${st} ${p.done}/${p.total}</span>`;
+}
+
+function renderStuds(tag, q) {
+  let list = state.studsByGroup[tag];
+  if (!list) return state.expanded.has(tag) ? '<li class="loading">불러오는 중…</li>' : '';
+  list = sortStuds(list.filter((s) => !q || (`${s.disp || dispH(s.hakbun)} ${s.name}`).toLowerCase().includes(q)));
+  if (!list.length) return q ? '<li class="empty">결과 없음</li>' : '<li class="empty">학생 없음</li>';
+  const custom = state.sortMode === 'custom';
+  return list.map((s) => {
+    const isOpen = s.hakbun === state.hakbun && tag === state.group;
+    const handle = custom ? '<span class="drag-h" title="드래그해 순서 변경">⠿</span>' : '';
+    return `<li data-h="${esc(s.hakbun)}" data-g="${esc(tag)}"${custom ? ' draggable="true"' : ''} class="${isOpen ? 'sel' : ''}${custom ? ' dragrow' : ''}">
+       ${handle}<span class="nm">${esc(s.disp || dispH(s.hakbun))} ${esc(s.name)}</span>
+       ${progBadge(s, isOpen)}</li>`;
+  }).join('');
+}
+
+function renderTree() {
+  const q = ($('#stuSearch').value || '').trim().toLowerCase();
+  const tree = $('#groupTree');
+  const hiddenCount = state.groupsList.filter((g) => g.hidden).length;
+  const visibleGroups = state.groupsList.filter((g) => q || state.showHidden || !g.hidden);
+  tree.innerHTML = visibleGroups.map((g) => {
+    const tag = g.group_tag;
+    if (q) {
+      const studs = state.studsByGroup[tag] || [];
+      if (!studs.some((s) => (`${s.disp || dispH(s.hakbun)} ${s.name}`).toLowerCase().includes(q))) return '';
+    }
+    const exp = state.expanded.has(tag) || !!q;
+    const active = tag === state.group ? ' active' : '';
+    return `<div class="grp${g.hidden ? ' grp-hidden' : ''}">
+      <div class="grp-head${active}" data-g="${esc(tag)}">
+        <span class="caret">${exp ? '▾' : '▸'}</span>
+        <span class="grp-name"><span class="grp-cat">(${esc(g.category)})</span> ${esc(tag)}</span>
+        <span class="grp-n">${g.n}</span>
+        <button class="grp-hide" data-g="${esc(tag)}" title="${g.hidden ? '숨김 해제' : '이 그룹 숨기기 (예: 지난 학기 학생)'}">${g.hidden ? '🙈' : '👁'}</button>
+        <button class="grp-add" data-g="${esc(tag)}" title="학생 추가">＋</button>
+      </div>
+      <ul class="grp-students" ${exp ? '' : 'hidden'}>${exp ? renderStuds(tag, q) : ''}</ul>
+    </div>`;
+  }).join('') || '<div class="empty" style="padding:14px">그룹 없음 — 설정에서 명단을 올리세요</div>';
+
+  tree.querySelectorAll('.grp-head').forEach((h) => {
+    h.onclick = (e) => { if (e.target.closest('.grp-add') || e.target.closest('.grp-hide')) return; toggleGroup(h.dataset.g); };
+  });
+  tree.querySelectorAll('.grp-add').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); addStudent(b.dataset.g); }; });
+  tree.querySelectorAll('.grp-hide').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); toggleGroupHidden(b.dataset.g); }; });
+  tree.querySelectorAll('li[data-h]').forEach((li) => { li.onclick = () => onStudentClick(li.dataset.h, li.dataset.g); });
+  const hiddenToggle = $('#hiddenToggle');
+  if (hiddenToggle) {
+    hiddenToggle.hidden = !hiddenCount;
+    hiddenToggle.textContent = state.showHidden ? `숨긴 그룹 ${hiddenCount}개 숨기기 ▲` : `숨긴 그룹 ${hiddenCount}개 보기 ▼`;
+  }
+  tree.querySelectorAll('li[data-h] .prog-chip').forEach((chip) => {
+    chip.onclick = (e) => {
+      const li = chip.closest('li');
+      if (state.view === 'student' && state.area && state.hakbun === li.dataset.h && state.group === li.dataset.g) {
+        e.stopPropagation();
+        cycleStatus();
+      }
+    };
+  });
+  if (state.sortMode === 'custom') {
+    tree.querySelectorAll('.grp').forEach((grp) => {
+      const head = grp.querySelector('.grp-head');
+      const ul = grp.querySelector('.grp-students');
+      if (head && ul) enableDrag(ul, head.dataset.g);
+    });
+  }
+}
+
+function onStudentClick(hakbun, group) {
+  if (state.view === 'dash') {
+    state.group = group;
+    state.expanded.add(group);
+    const after = () => { state.listCache = state.studsByGroup[group] || []; renderTree(); refreshView(); };
+    if (!state.studsByGroup[group]) loadGroup(group).then(after); else after();
+    return;
+  }
+  openStudent(hakbun, group);
+}
+
+async function toggleGroup(tag) {
+  state.group = tag;
+  if (state.expanded.has(tag)) {
+    state.expanded.delete(tag);
+  } else {
+    state.expanded.add(tag);
+    if (!state.studsByGroup[tag]) await loadGroup(tag);
+    state.listCache = state.studsByGroup[tag] || [];
+  }
+  renderTree();
+  if (state.view !== 'student') refreshView();
+}
+
+async function toggleGroupHidden(tag) {
+  const g = state.groupsList.find((x) => x.group_tag === tag);
+  const next = !(g && g.hidden);
+  await j(`/api/groups/${encodeURIComponent(tag)}/hidden`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ hidden: next }) });
+  await refreshGroups();
+  renderTree();
+  if (state.view === 'dash') await renderDash();
+}
+
+function toggleShowHidden() {
+  state.showHidden = !state.showHidden;
+  try { localStorage.setItem('saengbu_show_hidden', state.showHidden ? '1' : '0'); } catch (_) {}
+  renderTree();
+}
+
+async function onSearch() {
+  const q = ($('#stuSearch').value || '').trim();
+  if (q) {
+    const missing = state.groupsList.filter((g) => !state.studsByGroup[g.group_tag]);
+    if (missing.length) await Promise.all(missing.map((g) => loadGroup(g.group_tag)));
+  }
+  renderTree();
+}
+
+function updateEmptyState() {
+  const hasGroups = Object.keys(state.groupCat).length > 0;
+  const hasStudents = (state.listCache || []).length > 0;
+  if (!hasGroups) {
+    $('#emptyTitle').textContent = '시작하려면 설정에서 명단을 올리세요';
+    $('#emptyMsg').innerHTML = '아직 등록된 그룹이 없습니다. <b>설정 탭</b>에서 분류별 영역을 정하고 학생 명단(xlsx/csv)을 업로드하세요.';
+  } else if (!hasStudents) {
+    $('#emptyTitle').textContent = '이 그룹에 학생이 없습니다';
+    $('#emptyMsg').innerHTML = '<b>+학생</b>으로 추가하거나, <b>설정 탭</b>에서 명단을 업로드하세요.';
+  } else {
+    $('#emptyTitle').textContent = '학생을 선택하세요';
+    $('#emptyMsg').innerHTML = '왼쪽 목록에서 학생을 고르세요. 검색·정렬로 빠르게 찾을 수 있습니다.';
+  }
+}
+
+async function addStudent(group) {
+  const g = group || state.group;
+  if (!g) return;
+  const hakbun = ((await askText('추가할 학생의 학번', '')) || '').trim(); if (!hakbun) return;
+  const name = ((await askText('학생 이름', '')) || '').trim();
+  await j('/api/students', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ hakbun, name, group_tag: g }) });
+  state.group = g;
+  state.expanded.add(g);
+  await loadList();
+}
+
+function catFor(g) {
+  return state.groupCat[g] || inferCat(g);
+}
+
+function areasFor(g) {
+  const cat = catFor(g);
+  const list = (state.config.areas[cat] || []).map((a) => a.area);
+  if (!list.length && PER_SUBJECT.has(cat)) return [cat];
+  return list;
+}
+
+async function openStudent(hakbun, group) {
+  await saveIfDirty();
+  setSaveStatus('');
+  if (group) { state.group = group; state.expanded.add(group); state.listCache = state.studsByGroup[group] || state.listCache; }
+  state.hakbun = hakbun;
+  state.student = await j('/api/students/' + encodeURIComponent(hakbun));
+  setView('student');
+  const g = state.group || '';
+  const s = state.student;
+  $('#headInfo').innerHTML = `${esc(s.disp || dispH(s.hakbun))} ${esc(s.name)}<span class="sub">(${esc(catFor(g))}) ${esc(g)}${(s.groups || []).length > 1 ? ' · 소속 ' + esc((s.groups || []).join(', ')) : ''}</span>`;
+  const areas = areasFor(g);
+  $('#tabs').innerHTML = areas.map((a) => `<button data-a="${esc(a)}">${esc(a)}</button>`).join('');
+  $('#tabs').querySelectorAll('button').forEach((b) => { b.onclick = async () => { await saveIfDirty(); selectArea(b.dataset.a); }; });
+  loadList();
+  selectArea(areas.includes(state.area) ? state.area : areas[0]);
+}
+
+const STATUS_CYCLE = ['초안', '완료'];
+
+function setStatusChip(st) {
+  state.curStatus = st || '초안';
+  const el = $('#statusChip');
+  if (el) { el.textContent = state.curStatus; el.className = 'status-chip badge ' + state.curStatus; }
+}
+
+function cycleStatus() {
+  if (!state.hakbun || !state.area) return;
+  setStatusChip(state.curStatus === '완료' ? '초안' : '완료');
+  saveRecord(true);
+  showToast('상태: ' + state.curStatus);
+}
+
+function selectArea(area) {
+  state.area = area;
+  state.subject = PER_SUBJECT.has(catFor(state.group)) ? (state.group || '') : '';
+  $('#tabs').querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.a === area));
+  const rec = (state.student.records || []).find((r) => r.area === area && r.subject === state.subject) || {};
+  $('#body').value = rec.body || '';
+  const hopeRow = $('#hopeRow');
+  if (hopeRow) {
+    hopeRow.hidden = area !== '진로';
+    $('#hopeField').value = area === '진로' ? (rec.hope_field || '') : '';
+  }
+  setStatusChip(rec.status || '초안');
+  state.spellErrors = []; state.spellHlIdx = null; state.spellBaseText = ''; state.spellUndo = null;
+  state.forbid = []; state.forbidHlIdx = null; state.forbidBaseText = '';
+  $('#kwFrom').value = ''; $('#kwTo').value = '';
+  showEdit();
+  renderAssist();
+  renderKeyword();
+  renderPhraseButtons();
+  $('#spellPanel').innerHTML = '<div class="empty">‘맞춤법’ 버튼을 눌러 점검</div>';
+  $('#fbdPanel').innerHTML = '<div class="empty">‘맞춤법’ 버튼을 누르면 함께 검사</div>';
+  state.dirty = false;
+  renderTree();
+}
+
+async function gotoNextUnwritten() {
+  await saveIfDirty();
+  await loadList();
+  const list = state.listCache.length ? state.listCache : await j('/api/students?group=' + encodeURIComponent(state.group || ''));
+  const idx = list.findIndex((s) => s.hakbun === state.hakbun);
+  const order = list.slice(idx + 1).concat(list.slice(0, idx + 1));
+  const incomplete = (s) => !s.prog || s.prog.done < s.prog.total;
+  const next = order.find(incomplete) || order.find((s) => s.hakbun !== state.hakbun);
+  if (next) openStudent(next.hakbun, state.group);
+}
+
+function kwList() {
+  return $('#kwInput').value.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function renderKeyword() {
+  const text = $('#body').value;
+  const from = $('#kwFrom').value;
+  const to = $('#kwTo').value;
+  const kws = kwList();
+  const hits = from ? text.split(from).length - 1 : 0;
+  const preview = !!from && hits > 0;
+  const tags = $('#kwTags');
+  const prev = $('#kwPrev');
+  if (!kws.length && !preview) {
+    tags.innerHTML = '<span class="kw-empty">키워드를 넣으면 본문에서 강조됩니다. 표현 빈도 칩을 눌러 담을 수도 있습니다.</span>';
+    prev.innerHTML = from ? `<div class="kw-prev over">이 학생 본문에 <b>${esc(from)}</b>이(가) 없습니다</div>` : '';
+    $('#kwView').hidden = true;
+    if (!state.sentMode && !state.hlMode) $('#body').hidden = false;
+    return;
+  }
+  tags.innerHTML = kws.map((w, i) => `<span class="kw-tag k${i % 4}">${esc(w)}<em>${text.split(w).length - 1}</em></span>`).join('');
+  let html = esc(text);
+  if (preview) {
+    html = html.split(esc(from)).join(`<del class="kwdel">${esc(from)}</del><ins class="kwins">${esc(to)}</ins>`);
+    const next = text.split(from).join(to);
+    const after = calcBytes(next);
+    const limit = activeLimit(state.area) || 0;
+    const over = limit && after > limit;
+    prev.innerHTML = `<div class="kw-prev${over ? ' over' : ''}"><b>${hits}곳</b> 바뀝니다 · <b>${calcBytes(text)}</b>B → <b>${after}</b>B ${over ? '⚠ 한도 ' + limit + ' 초과' : '(한도 안)'}<div class="kw-act"><button class="btn-primary" id="kwApply" type="button">이대로 바꾸기</button><button class="btn-ghost" id="kwCancel" type="button">취소</button></div></div>`;
+    $('#kwApply').onclick = () => {
+      $('#body').value = next;
+      state.dirty = true;
+      $('#kwFrom').value = ''; $('#kwTo').value = '';
+      renderAssist(); renderKeyword();
+      showToast(`✓ ${hits}곳 바꿈`);
+    };
+    $('#kwCancel').onclick = () => { $('#kwFrom').value = ''; $('#kwTo').value = ''; renderKeyword(); };
+  } else {
+    prev.innerHTML = from ? `<div class="kw-prev over">이 학생 본문에 <b>${esc(from)}</b>이(가) 없습니다</div>` : '';
+    kws.forEach((w, i) => { html = html.split(esc(w)).join(`<mark class="k${i % 4}">${esc(w)}</mark>`); });
+  }
+  $('#kwView').innerHTML = html;
+  $('#kwView').hidden = false;
+  $('#body').hidden = true;
+  $('#sentView').hidden = true;
+}
+
+function addKeyword(term) {
+  const cur = $('#kwInput').value.trim();
+  const list = kwList();
+  if (list.includes(term)) return;
+  $('#kwInput').value = cur ? cur + ', ' + term : term;
+  renderKeyword();
+}
+
+function selectedText() {
+  const ta = $('#body');
+  if (ta && !ta.hidden && document.activeElement === ta) return ta.value.slice(ta.selectionStart, ta.selectionEnd);
+  const sv = $('#sentView');
+  if (sv && !sv.hidden) {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && sv.contains(sel.anchorNode)) return String(sel);
+  }
+  return '';
+}
+
+function hideSelByte() { const el = $('#selByte'); if (el) el.hidden = true; }
+
+function caretXY(ta, pos) {
+  const cs = getComputedStyle(ta);
+  const d = document.createElement('div');
+  ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight',
+    'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderLeftWidth', 'boxSizing'].forEach((k) => { d.style[k] = cs[k]; });
+  Object.assign(d.style, { position: 'absolute', top: '0', left: '-9999px', visibility: 'hidden',
+    whiteSpace: 'pre-wrap', wordWrap: 'break-word', width: cs.width });
+  d.textContent = ta.value.slice(0, pos);
+  const sp = document.createElement('span');
+  sp.textContent = '​';
+  d.appendChild(sp);
+  document.body.appendChild(d);
+  const r = ta.getBoundingClientRect();
+  const out = { x: r.left + sp.offsetLeft - ta.scrollLeft, y: r.top + sp.offsetTop - ta.scrollTop, lh: parseFloat(cs.lineHeight) || 20 };
+  document.body.removeChild(d);
+  return out;
+}
+
+function showSelByte(mx, my) {
+  const el = $('#selByte');
+  if (!el) return;
+  const sel = selectedText();
+  if (!sel.trim()) { el.hidden = true; return; }
+  const b = calcBytes(sel);
+  const rest = calcBytes($('#body').value) - b;
+  el.textContent = `선택 ${[...sel].length}자 · ${b}B · 빼면 ${rest}B`;
+  el.hidden = false;
+  const w = el.offsetWidth || 170;
+  const h = el.offsetHeight || 24;
+  const ta = $('#body');
+  let x; let y;
+  if (ta && !ta.hidden && document.activeElement === ta) {
+    const p = caretXY(ta, ta.selectionEnd);
+    const box = ta.getBoundingClientRect();
+    x = p.x + 6; y = p.y + p.lh - 2;
+    if (y + h > box.bottom - 2) y = box.bottom - h - 4;
+    if (x + w > box.right - 6) x = box.right - w - 6;
+  } else {
+    const s = window.getSelection();
+    if (s && s.rangeCount) {
+      const rect = s.getRangeAt(0).getBoundingClientRect();
+      if (rect && rect.width) { x = rect.right + 4; y = rect.bottom + 2; }
+    }
+    if (x == null) { x = mx + 12; y = my + 16; }
+  }
+  el.style.left = Math.max(6, Math.min(window.innerWidth - w - 8, x)) + 'px';
+  el.style.top = Math.max(6, Math.min(window.innerHeight - h - 6, y)) + 'px';
+}
+
+function bindSelByte() {
+  let x = 0, y = 0;
+  document.addEventListener('mousemove', (e) => { x = e.clientX; y = e.clientY; }, { passive: true });
+  document.addEventListener('mouseup', (e) => setTimeout(() => showSelByte(e.clientX, e.clientY), 0));
+  document.addEventListener('keyup', (e) => { if (e.shiftKey || e.key === 'Shift' || (e.ctrlKey && e.key.toLowerCase() === 'a')) showSelByte(x, y); else hideSelByte(); });
+  document.addEventListener('mousedown', hideSelByte);
+  document.addEventListener('scroll', hideSelByte, true);
+  window.addEventListener('blur', hideSelByte);
+}
+
+async function gfOpen(mode, term) {
+  $('#gfBack').hidden = false;
+  if (!state.allRecs) {
+    $('#gfSum').textContent = '불러오는 중…';
+    try { state.allRecs = await j('/api/all-records'); } catch (e) { state.allRecs = []; }
+    const scopes = [...new Set(state.allRecs.map((r) => r.area + (r.subject ? ' · ' + r.subject : '')))];
+    $('#gfScope').innerHTML = `<option value="">전체 기록 (${state.allRecs.length}건)</option>` +
+      scopes.map((s) => `<option value="${esc(s)}">${esc(s)} (${state.allRecs.filter((r) => r.area + (r.subject ? ' · ' + r.subject : '') === s).length})</option>`).join('');
+  }
+  if (term != null) $('#gfQ').value = term;
+  gfSetMode(mode || 'find');
+  $('#gfQ').focus();
+}
+
+function gfClose() { $('#gfBack').hidden = true; }
+
+function gfSetMode(m) {
+  state.gfMode = m;
+  $('#gfTabFind').classList.toggle('sel', m === 'find');
+  $('#gfTabRep').classList.toggle('sel', m === 'rep');
+  $('#gfR').hidden = m === 'find';
+  $('#gfApply').hidden = m === 'find';
+  gfRender();
+}
+
+function gfPool() {
+  const s = $('#gfScope').value;
+  const all = state.allRecs || [];
+  return s ? all.filter((r) => r.area + (r.subject ? ' · ' + r.subject : '') === s) : all;
+}
+
+function gfHits(q) {
+  if (!q) return [];
+  return gfPool().map((r) => {
+    const idx = []; let i = r.body.indexOf(q);
+    while (i >= 0) { idx.push(i); i = r.body.indexOf(q, i + q.length); }
+    return idx.length ? { r, idx } : null;
+  }).filter(Boolean);
+}
+
+function gfSnip(body, idx, q) {
+  return idx.slice(0, 2).map((i) => {
+    const a = Math.max(0, i - 28); const b = Math.min(body.length, i + q.length + 32);
+    return (a > 0 ? '…' : '') + esc(body.slice(a, i)) + '<mark class="k0">' + esc(q) + '</mark>' + esc(body.slice(i + q.length, b)) + (b < body.length ? '…' : '');
+  }).join('<br>');
+}
+
+function gfRender() {
+  const q = $('#gfQ').value; const rep = $('#gfR').value;
+  const H = gfHits(q);
+  const tot = H.reduce((s, h) => s + h.idx.length, 0);
+  $('#gfSum').innerHTML = !q ? '찾을 말을 입력하세요' : (H.length ? `<b>${H.length}건</b>에서 <b>${tot}회</b>` : '결과 없음');
+  if (state.gfMode === 'find') {
+    $('#gfList').innerHTML = H.map((h, i) => `<div class="gf-hit" data-i="${i}"><span class="gf-who">${esc(h.r.hakbun)} ${esc(h.r.name)}<small>${esc(h.r.area)}${h.r.subject ? ' · ' + esc(h.r.subject) : ''}</small></span><span class="gf-snip">${gfSnip(h.r.body, h.idx, q)}</span><span class="gf-cnt">${h.idx.length}회</span></div>`).join('')
+      || '<div class="empty" style="padding:18px;text-align:center">—</div>';
+    $('#gfWarn').innerHTML = '';
+    $('#gfList').querySelectorAll('.gf-hit').forEach((el) => {
+      el.onclick = async () => {
+        const h = H[Number(el.dataset.i)];
+        gfClose();
+        state.area = h.r.area;
+        await openStudent(h.r.key, h.r.group);
+        selectArea(h.r.area);
+        $('#kwInput').value = q;
+        renderKeyword();
+      };
+    });
+    return;
+  }
+  const rows = H.map((h) => {
+    const next = h.r.body.split(q).join(rep);
+    const after = calcBytes(next);
+    return { h, next, after, over: h.r.limit && after > h.r.limit };
+  });
+  const overs = rows.filter((x) => x.over);
+  state.gfRows = rows;
+  $('#gfList').innerHTML = rows.length
+    ? '<table class="gf-tbl"><thead><tr><th style="width:24px"><input type="checkbox" id="gfAll" checked></th><th>학생</th><th>영역</th><th class="num">지금</th><th class="num">바꾼 뒤</th><th class="num">횟수</th></tr></thead><tbody>' +
+      rows.map((x, i) => `<tr class="${x.over ? 'over' : ''}"><td><input type="checkbox" class="gf-ck" data-i="${i}" ${x.over ? '' : 'checked'}></td><td>${esc(x.h.r.hakbun)} ${esc(x.h.r.name)}</td><td>${esc(x.h.r.area)}${x.h.r.subject ? ' · ' + esc(x.h.r.subject) : ''}</td><td class="num">${x.h.r.bytes}</td><td class="num aft">${x.after}${x.over ? ' ⚠' : ''}</td><td class="num">${x.h.idx.length}</td></tr>`).join('') + '</tbody></table>'
+    : '<div class="empty" style="padding:18px;text-align:center">—</div>';
+  $('#gfWarn').innerHTML = rows.length
+    ? (overs.length ? `<div class="gf-warn"><b>${overs.length}건</b>이 한도를 넘습니다 — ${overs.map((o) => o.h.r.hakbun + ' ' + o.h.r.name + ' ' + o.after + 'B').join(', ')}. 체크를 풀면 건너뜁니다.</div>`
+      : '<div class="gf-warn ok">모두 한도 안에 들어옵니다. 적용 후에도 이력 보기로 되돌릴 수 있습니다.</div>')
+    : '';
+  const all = $('#gfAll');
+  if (all) all.onclick = () => { $('#gfList').querySelectorAll('.gf-ck').forEach((c) => { c.checked = all.checked; }); };
+}
+
+async function gfApply() {
+  const rows = state.gfRows || [];
+  const picks = [...$('#gfList').querySelectorAll('.gf-ck')].filter((c) => c.checked).map((c) => rows[Number(c.dataset.i)]);
+  if (!picks.length) { showToast('선택된 항목이 없습니다'); return; }
+  if (!confirm(`${picks.length}건을 바꿉니다. 계속할까요?`)) return;
+  $('#gfApply').disabled = true;
+  let done = 0;
+  for (const p of picks) {
+    const url = `/api/records/${encodeURIComponent(p.h.r.key)}/${encodeURIComponent(p.h.r.area)}?subject=${encodeURIComponent(p.h.r.subject)}`;
+    try {
+      await j(url, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: p.next, status: p.h.r.status }) });
+      p.h.r.body = p.next; p.h.r.bytes = p.after; done += 1;
+    } catch (e) { /* skip */ }
+  }
+  $('#gfApply').disabled = false;
+  showToast(`✓ ${done}건 바꿈`);
+  if (state.hakbun) { const s = await j('/api/students/' + encodeURIComponent(state.hakbun)); state.student = s; selectArea(state.area); }
+  gfRender();
+}
+
+function renderGauge() {
+  const text = $('#body').value;
+  const limit = activeLimit(state.area) || 0;
+  const bodyB = calcBytes(text);
+  const hopeB = hopeBytes();
+  const bytes = bodyB + hopeB;
+  const pct = limit ? (bytes / limit) * 100 : 0;
+  const cls = bytes > limit ? 'over' : pct >= 95 ? 'full' : pct < 70 ? 'low' : 'ok';
+  $('.gauge').className = 'gauge ' + cls;
+  $('#gaugeFill').style.width = Math.min(100, pct) + '%';
+  $('#gaugeArea').textContent = `${state.area}${state.subject ? ' · ' + state.subject : ''}`;
+  const sum = state.area === '진로' ? `본문 ${bodyB} + 희망분야 ${hopeB} = ` : '';
+  $('#gaugeText').textContent = `${[...text].length}자 · ${sum}${bytes} / ${limit} B (${pct.toFixed(0)}%)`;
+  const student = state.student || {};
+  const perStudent = PER_SUBJECT.has(catFor(state.group));
+  $('#studentBudgetBar').hidden = !perStudent;
+  $('#studentBudgetLabel').textContent = `${student.byte_limit == null ? '그룹 기본' : '학생별'} 한도 ${limit.toLocaleString('ko-KR')} B · ${bytes > limit ? (bytes - limit) + ' B 초과' : (limit - bytes) + ' B 남음'}`;
+  const prefix = perStudent ? (student.required_prefix || '') : '';
+  const prefixB = calcBytes(prefix);
+  $('#prefixGuide').hidden = !prefix;
+  $('#prefixGuideText').textContent = `머리말 ${JSON.stringify(prefix)} ${prefixB} B 포함 · 본문 최대 ${Math.max(0, limit - prefixB)} B` + (text.startsWith(prefix) ? ' · 머리말 입력됨' : ' · 머리말을 넣어 주세요');
+  $('#insertPrefix').hidden = !prefix || text.startsWith(prefix);
+  if (state.area === '진로') {
+    const el = $('#hopeField'); const hint = $('#hopeHint');
+    const empty = !el.value.trim();
+    el.classList.toggle('empty', empty);
+    hint.className = 'hope-hint' + (empty ? ' warn' : '');
+    hint.textContent = empty ? 'NEIS 희망분야도 한도에 포함됩니다 — 비우면 실제보다 여유가 크게 보입니다' : `${hopeB} byte 차지`;
+  }
+  return { bytes, limit, pct, cls };
+}
+
+function renderAssist() {
+  const text = $('#body').value;
+  renderGauge();
+  renderFreq(text);
+  if (state.sentMode) renderSentences(text);
+}
+
+function sentenceParts(text) {
+  const t = String(text || '').replace(/\r\n?/g, '\n');
+  if (!t) return [];
+  return t.match(/[^.!?\n]*(?:[.!?]+|\n|$)/g) || [];
+}
+
+function markTerm(s, term, cls) {
+  return term ? esc(s).split(esc(term)).join(`<mark class="${cls || 'hl'}">${esc(term)}</mark>`) : esc(s);
+}
+
+function markSpacing(s) {
+  return esc(s).replace(/ {2,}/g, (m) => `<mark class="hl space-err">${'·'.repeat(m.length)}</mark>`);
+}
+
+function renderSentences(text) {
+  const raw = sentenceParts(text);
+  state.sentParts = raw;
+  const term = state.hlTerm;
+  const cls = state.hlClass || 'hl';
+  const spacing = state.hlSpacing;
+  let head = '';
+  if (spacing) {
+    const count = (text.match(/ {2,}/g) || []).length;
+    head = `<div class="hl-head">이중 공백 ${count}곳 강조 · <button class="hl-clear" type="button">강조 해제</button></div>`;
+  } else if (term) {
+    const count = text.split(term).length - 1;
+    head = `<div class="hl-head">‘<b>${esc(term)}</b>’ ${count}회 강조 · <button class="hl-clear" type="button">강조 해제</button></div>`;
+  }
+  let visible = 0;
+  const rows = raw.map((s, i) => {
+    if (!s.trim()) return '';
+    visible += 1;
+    const n = [...s.trim()].length;
+    const long = n > 120;
+    const veryLong = n > 160;
+    const scls = veryLong ? 'sent vlong' : long ? 'sent long' : 'sent';
     const inner = spacing ? markSpacing(s) : markTerm(s, term, cls);
     return `<div class="${scls}"><span class="sno">${visible}</span><span class="stx" contenteditable="true" data-pi="${i}">${inner}</span><span class="slen">${n}자 · ${calcBytes(s.trim())}B</span></div>`;
   }).join('');

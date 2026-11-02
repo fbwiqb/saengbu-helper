@@ -8,6 +8,7 @@ on:
       - 'v*'
     paths:
       - 'package.json'
+      - '.github/workflows/release.yml'
 
 jobs:
   build:
