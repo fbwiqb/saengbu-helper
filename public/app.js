@@ -260,6 +260,7 @@ async function boot() {
   $('#budgetForm').onsubmit = saveBudget;
   $('#budgetLimit').oninput = budgetPreview;
   $('#budgetPrefix').onchange = budgetPreview;
+  $('#budgetPrefixText').oninput = budgetPreview;
   $('#budgetReset').onclick = () => { $('#budgetLimit').value = ''; budgetPreview(); };
   $('#budgetForm').onkeydown = e => {
     if (e.key !== 'Tab') return;
@@ -1783,7 +1784,8 @@ async function openBudget(hakbun) {
     $('#budgetWho').textContent = `${student.disp || dispH(student.hakbun)} ${student.name} · ${student.group_tag}`;
     $('#budgetLimit').value = student.byte_limit == null ? '' : student.byte_limit;
     $('#budgetPrefix').checked = !!student.required_prefix;
-    $('#budgetPrefixLabel').textContent = `${student.required_prefix && student.required_prefix !== '(2학기) ' ? JSON.stringify(student.required_prefix) : '(2학기)'} 머리말 사용 · ${calcBytes(student.required_prefix || '(2학기) ')} B`;
+    const group = (state.groupsList || []).find(g => g.group_tag === student.group_tag);
+    $('#budgetPrefixText').value = student.required_prefix || (group && group.required_prefix) || '(2학기) ';
     $('#budgetError').textContent = '';
     $('#budgetModal').hidden = false;
     budgetPreview();
@@ -1800,12 +1802,13 @@ function closeBudget() {
 }
 
 function budgetPrefixValue() {
-  return $('#budgetPrefix').checked ? (state.budgetStudent.required_prefix || '(2학기) ') : null;
+  return $('#budgetPrefix').checked ? $('#budgetPrefixText').value : null;
 }
 
 function budgetPreview() {
   const student = state.budgetStudent;
   if (!student) return;
+  $('#budgetPrefixText').disabled = !$('#budgetPrefix').checked;
   const raw = $('#budgetLimit').value;
   const limit = raw === '' ? groupByteLimit(student.group_tag) || state.targets[areasFor(student.group_tag)[0]] || 0 : Number(raw);
   const bytes = calcBytes(budgetPrefixValue());
@@ -1820,6 +1823,7 @@ async function saveBudget(event) {
   $('#budgetError').textContent = '';
   try {
     const value = $('#budgetLimit').value;
+    if ($('#budgetPrefix').checked && !budgetPrefixValue().trim()) throw new Error('머리말 문구를 입력하세요');
     const updated = await checkedJson('/api/students/' + encodeURIComponent(student.hakbun) + '/budget', {
       method: 'PUT', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ byte_limit: value === '' ? null : Number(value), required_prefix: budgetPrefixValue() }),
@@ -2312,7 +2316,7 @@ function renderManage() {
           <span class="mg-name">${esc(g.group_tag)}</span>
           <span class="mg-n">${g.n}명</span>
           ${groupByteControl(g)}
-          ${PER_SUBJECT.has(g.category) ? `<label class="mg-prefix-label"><input type="checkbox" class="mg-prefix" data-g="${esc(g.group_tag)}" ${g.prefix_count === g.n && g.n > 0 || g.n === 0 && g.required_prefix ? 'checked' : ''} data-mixed="${g.prefix_count > 0 && g.prefix_count < g.n}"> (2학기) 머리말</label>` : ''}
+          ${PER_SUBJECT.has(g.category) ? groupPrefixControl(g) : ''}
           <span class="spacer"></span>
           <button class="mg-rename btn-ghost" data-g="${esc(g.group_tag)}">이름변경</button>
           <button class="mg-del btn-ghost" data-g="${esc(g.group_tag)}">삭제</button>
@@ -2324,7 +2328,13 @@ function renderManage() {
   $('#managePanel').innerHTML = html;
   $('#managePanel').querySelectorAll('.mg-prefix').forEach(input => {
     input.indeterminate = input.dataset.mixed === 'true';
-    input.onchange = () => setGroupPrefixUI(input.dataset.g, input.checked, input);
+    input.onchange = () => { input.closest('.mg-prefix-control').querySelector('.mg-prefix-text').disabled = !input.checked; };
+  });
+  $('#managePanel').querySelectorAll('.mg-prefix-apply').forEach(button => {
+    button.onclick = () => setGroupPrefixUI(button.closest('.mg-prefix-control'));
+  });
+  $('#managePanel').querySelectorAll('.mg-prefix-text').forEach(input => {
+    input.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); setGroupPrefixUI(input.closest('.mg-prefix-control')); } };
   });
   $('#managePanel').querySelectorAll('.mg-budget-edit').forEach(button => { button.onclick = () => openBudget(button.dataset.h); });
   $('#managePanel').querySelectorAll('.mg-byte').forEach((sel) => {
@@ -2365,18 +2375,33 @@ async function setGroupByteUI(tag, val) {
   showToast(val === '' ? '✓ 설정값 사용' : `✓ ${val}B 한도 적용`);
 }
 
-async function setGroupPrefixUI(tag, enabled, input) {
-  input.disabled = true;
+function groupPrefixControl(group) {
+  const enabled = group.prefix_count === group.n && group.n > 0 || group.n === 0 && !!group.required_prefix;
+  const mixed = group.prefix_count > 0 && group.prefix_count < group.n;
+  return `<div class="mg-prefix-control" data-g="${esc(group.group_tag)}"><label class="mg-prefix-label"><input type="checkbox" class="mg-prefix" ${enabled ? 'checked' : ''} data-mixed="${mixed}"> 머리말 사용${mixed ? ' (일부)' : ''}</label><input class="mg-prefix-text" type="text" maxlength="100" list="prefixSuggestions" value="${esc(group.required_prefix || '(2학기) ')}" aria-label="${esc(group.group_tag)} 머리말 문구" title="문구 뒤 공백도 바이트에 포함됩니다" ${enabled ? '' : 'disabled'}><button type="button" class="mg-prefix-apply btn-ghost">적용</button></div>`;
+}
+
+async function setGroupPrefixUI(control) {
+  const tag = control.dataset.g;
+  const enabled = control.querySelector('.mg-prefix').checked;
+  const text = control.querySelector('.mg-prefix-text').value;
+  const fields = [...control.querySelectorAll('input,button')];
+  fields.forEach(field => { field.disabled = true; });
   try {
+    if (enabled && !text.trim()) throw new Error('머리말 문구를 입력하세요');
     await checkedJson('/api/groups/' + encodeURIComponent(tag) + '/prefix', {
-      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled }),
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled, required_prefix: text }),
     });
     await refreshGroups();
     if (state.studsByGroup[tag]) await loadGroup(tag);
     if (state.student && state.student.group_tag === tag) state.student = await checkedJson('/api/students/' + encodeURIComponent(state.hakbun));
     renderManage();
     showToast(enabled ? '머리말 사용 켬 · 기존 본문은 그대로입니다' : '머리말 사용 끔 · 기존 본문은 그대로입니다');
-  } catch (error) { input.checked = !enabled; input.disabled = false; showToast(error.message); }
+  } catch (error) {
+    fields.forEach(field => { field.disabled = false; });
+    control.querySelector('.mg-prefix-text').disabled = !enabled;
+    showToast(error.message);
+  }
 }
 
 function renderMgStudents(tag) {

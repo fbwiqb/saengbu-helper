@@ -162,7 +162,7 @@ function createApp(db) {
   app.put('/api/groups/:tag/prefix', (req, res) => {
     try {
       if (typeof (req.body || {}).enabled !== 'boolean') throw new Error('머리말 사용 여부를 선택하세요');
-      res.json({ ok: true, required_prefix: db_.setGroupPrefix(db, req.params.tag, req.body.enabled) });
+      res.json({ ok: true, required_prefix: db_.setGroupPrefix(db, req.params.tag, req.body.enabled, req.body.required_prefix) });
     } catch (e) { res.status(400).json({ error: e.message }); }
   });
   app.delete('/api/students/:hakbun/membership/:tag', (req, res) => {

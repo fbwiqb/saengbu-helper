@@ -272,7 +272,11 @@
       <p id="budgetWho" class="muted"></p>
       <label for="budgetLimit">학생별 전체 한도 (B)</label>
       <input id="budgetLimit" type="number" min="1" max="30000" step="1" placeholder="비우면 그룹 기본값" />
-      <label class="prefix-check" for="budgetPrefix"><input id="budgetPrefix" type="checkbox" /> <span id="budgetPrefixLabel">(2학기) 머리말 사용 · 10 B</span></label>
+      <label class="prefix-check" for="budgetPrefix"><input id="budgetPrefix" type="checkbox" /> 머리말 사용</label>
+      <label for="budgetPrefixText">머리말 문구</label>
+      <input id="budgetPrefixText" type="text" maxlength="100" list="prefixSuggestions" placeholder="직접 입력 또는 학기 선택" />
+      <datalist id="prefixSuggestions"><option value="(1학기) "></option><option value="(2학기) "></option></datalist>
+      <p class="muted">원하는 문구를 입력하세요. 문구 뒤 공백도 바이트에 포함됩니다.</p>
       <p id="budgetPreview" class="budget-preview"></p>
       <p class="muted">한도는 머리말을 포함한 전체 글의 바이트입니다. 본문 내용은 변경하지 않습니다.</p>
       <p id="budgetError" class="budget-error" role="alert"></p>

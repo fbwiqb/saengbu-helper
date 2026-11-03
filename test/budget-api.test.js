@@ -39,6 +39,13 @@ test('budget API validates input and preserves body/status; prefix route touches
   res = await request(app, 'PUT', `/api/students/${key}/budget`, { byte_limit: 0 });
   assert.equal(res.status, 400);
   assert.equal(db_.getStudent(db, hakbun).byte_limit, 689);
+  res = await request(app, 'PUT', `/api/groups/${encodeURIComponent('과학13')}/prefix`, { enabled: true, required_prefix: '(탐구) ' });
+  assert.equal(res.status, 200);
+  assert.equal(db_.getStudent(db, hakbun).required_prefix, '(탐구) ');
+  assert.deepEqual(db.prepare('SELECT * FROM records').all(), before);
+  res = await request(app, 'PUT', `/api/groups/${encodeURIComponent('과학13')}/prefix`, { enabled: true, required_prefix: '   ' });
+  assert.equal(res.status, 400);
+  assert.equal(db_.getStudent(db, hakbun).required_prefix, '(탐구) ');
   res = await request(app, 'PUT', `/api/groups/${encodeURIComponent('과학13')}/prefix`, { enabled: false });
   assert.equal(res.status, 200);
   assert.equal(db_.getStudent(db, hakbun).required_prefix, null);

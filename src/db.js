@@ -418,12 +418,14 @@ function studentBudget(input) {
   return out;
 }
 
-function setGroupPrefix(db, tag, enabled) {
+function setGroupPrefix(db, tag, enabled, text) {
   return db.transaction(() => {
-    const group = db.prepare('SELECT category FROM groups WHERE group_tag=?').get(tag);
+    const group = db.prepare('SELECT category,required_prefix FROM groups WHERE group_tag=?').get(tag);
     if (!group || !PER_SUBJECT_CATEGORIES.has(group.category)) throw new Error('과목 그룹의 머리말만 설정할 수 있습니다');
-    const prefix = enabled ? '(2학기) ' : null;
-    if (prefix && db.prepare('SELECT 1 FROM students WHERE group_tag=? AND byte_limit IS NOT NULL AND byte_limit<?').get(tag, calcBytes(prefix))) throw new Error('일부 학생의 한도가 머리말 10 B보다 작습니다');
+    const prefix = enabled ? (text === undefined ? group.required_prefix || '(2학기) ' : text) : null;
+    if (enabled && (typeof prefix !== 'string' || !prefix.trim() || prefix.length > 100)) throw new Error('머리말 문구를 1~100자 이내로 입력하세요');
+    const prefixBytes = calcBytes(prefix);
+    if (prefix && db.prepare('SELECT 1 FROM students WHERE group_tag=? AND byte_limit IS NOT NULL AND byte_limit<?').get(tag, prefixBytes)) throw new Error(`일부 학생의 한도가 머리말 ${prefixBytes} B보다 작습니다`);
     db.prepare('UPDATE groups SET required_prefix=? WHERE group_tag=?').run(prefix, tag);
     db.prepare("UPDATE students SET required_prefix=?,updated_at=datetime('now') WHERE group_tag=?").run(prefix, tag);
     return prefix;

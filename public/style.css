@@ -772,6 +772,9 @@ ins.kwins { color: #1c6b42; text-decoration: none; font-weight: 800; background:
 .budget-dialog .prefix-check, .mg-prefix-label { display:flex; align-items:center; gap:7px; font-size:12px; white-space:nowrap; }
 .budget-dialog .prefix-check input, .mg-prefix-label input { width:auto; accent-color:var(--accent); }
 .mg-row { flex-wrap:wrap; }
+.mg-prefix-control { display:flex; flex-wrap:wrap; align-items:center; gap:7px; }
+.mg-prefix-text { width:145px; min-width:100px; font-size:12px; }
+.mg-prefix-apply { font-size:12px; padding:5px 8px; }
 .budget-dialog p { font-size:12px; line-height:1.6; }
 .budget-preview { background:#edf3ef; color:var(--accent); padding:12px; border-radius:8px; }
 .budget-error { color:var(--red); }
