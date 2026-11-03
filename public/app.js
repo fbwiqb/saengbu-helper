@@ -2303,14 +2303,17 @@ function renderManage() {
   if (!gs.length) { $('#managePanel').innerHTML = '<div class="empty">등록된 그룹이 없습니다</div>'; return; }
   state.mgExpanded = state.mgExpanded || new Set();
   const total = gs.reduce((s, g) => s + (g.n || 0), 0);
-  let html = `<div class="mg-sum">그룹 ${gs.length} · 학생 ${total}명</div>`;
-  for (const cat of (state.config.categories || [])) {
-    const list = gs.filter((g) => g.category === cat);
-    if (!list.length) continue;
-    html += `<div class="mg-cat-h">${esc(cat)}</div>`;
-    for (const g of list) {
-      const exp = state.mgExpanded.has(g.group_tag);
-      html += `<div class="mg-grp">
+  const hiddenGs = gs.filter((g) => g.hidden);
+  let html = `<div class="mg-sum">그룹 ${gs.length} · 학생 ${total}명${hiddenGs.length ? ` (숨긴 그룹 ${hiddenGs.length}개 포함)` : ''}</div>`;
+  const renderCats = (groups) => {
+    let out = '';
+    for (const cat of (state.config.categories || [])) {
+      const list = groups.filter((g) => g.category === cat);
+      if (!list.length) continue;
+      out += `<div class="mg-cat-h">${esc(cat)}</div>`;
+      for (const g of list) {
+        const exp = state.mgExpanded.has(g.group_tag);
+        out += `<div class="mg-grp${g.hidden ? ' grp-hidden' : ''}">
         <div class="mg-row">
           <button class="mg-caret" data-g="${esc(g.group_tag)}">${exp ? '▾' : '▸'}</button>
           <span class="mg-name">${esc(g.group_tag)}</span>
@@ -2318,14 +2321,25 @@ function renderManage() {
           ${groupByteControl(g)}
           ${PER_SUBJECT.has(g.category) ? groupPrefixControl(g) : ''}
           <span class="spacer"></span>
+          <button class="mg-hide btn-ghost" data-g="${esc(g.group_tag)}">${g.hidden ? '숨김 해제' : '숨기기'}</button>
           <button class="mg-rename btn-ghost" data-g="${esc(g.group_tag)}">이름변경</button>
           <button class="mg-del btn-ghost" data-g="${esc(g.group_tag)}">삭제</button>
         </div>
         <div class="mg-students" ${exp ? '' : 'hidden'}>${exp ? renderMgStudents(g.group_tag) : ''}</div>
       </div>`;
+      }
     }
+    return out;
+  };
+  html += renderCats(gs.filter((g) => !g.hidden));
+  if (hiddenGs.length) {
+    html += `<button class="mg-hidden-toggle btn-ghost" type="button">${state.mgShowHidden ? '▾' : '▸'} 숨긴 그룹 ${hiddenGs.length}개</button>`;
+    if (state.mgShowHidden) html += `<div class="mg-hidden-list">${renderCats(hiddenGs)}</div>`;
   }
   $('#managePanel').innerHTML = html;
+  const hiddenToggleBtn = $('#managePanel').querySelector('.mg-hidden-toggle');
+  if (hiddenToggleBtn) hiddenToggleBtn.onclick = () => { state.mgShowHidden = !state.mgShowHidden; renderManage(); };
+  $('#managePanel').querySelectorAll('.mg-hide').forEach((b) => { b.onclick = async () => { await toggleGroupHidden(b.dataset.g); renderManage(); }; });
   $('#managePanel').querySelectorAll('.mg-prefix').forEach(input => {
     input.indeterminate = input.dataset.mixed === 'true';
     input.onchange = () => { input.closest('.mg-prefix-control').querySelector('.mg-prefix-text').disabled = !input.checked; };

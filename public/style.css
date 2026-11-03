@@ -628,6 +628,9 @@ mark.hl.fbd-err { background: #ffd7b0; color: #9a3412; box-shadow: 0 0 0 1px #f5
 #upRegisterBtn { align-self: stretch; padding: 10px; font-size: 14px; }
 .mg-sum { font-size: 13px; color: var(--ink-soft); font-weight: 600; margin-bottom: 8px; }
 .mg-cat-h { font-family: var(--font-head); font-weight: 800; font-size: 12px; color: var(--accent); margin: 12px 0 4px; }
+.mg-hidden-toggle { margin-top: 16px; font-weight: 700; }
+.mg-hidden-list { border-left: 3px solid var(--line); padding-left: 10px; }
+.mg-grp.grp-hidden .mg-name { opacity: .6; }
 .mg-grp { border-bottom: 1px solid var(--line-soft); }
 .mg-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; }
 .mg-row .spacer { flex: 1; }
