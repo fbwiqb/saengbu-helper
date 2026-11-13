@@ -78,8 +78,50 @@ async function createWindow() {
   win.loadURL(`http://127.0.0.1:${port}`);
 }
 
+const DOWNLOAD_PAGE = 'https://local-toolbox.vercel.app/saengbu';
+const INSTALL_FAIL_LIMIT = 3;
+let attemptCountedThisRun = false;
+
+function updateStateFile() {
+  return path.join(app.getPath('userData'), 'update-state.json');
+}
+
+function versionAtLeast(a, b) {
+  const pa = String(a || '').split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = String(b || '').split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return true;
+}
+
+function readUpdateState() {
+  try { return JSON.parse(require('fs').readFileSync(updateStateFile(), 'utf8')); } catch (_e) { return null; }
+}
+
+function clearStaleUpdateState() {
+  const st = readUpdateState();
+  if (st && versionAtLeast(app.getVersion(), st.version)) {
+    try { require('fs').unlinkSync(updateStateFile()); } catch (_e) {}
+  }
+}
+
+function noteInstallAttempt(version) {
+  const st = readUpdateState();
+  let attempts = st && st.version === version ? st.attempts || 0 : 0;
+  if (!attemptCountedThisRun) {
+    attempts += 1;
+    attemptCountedThisRun = true;
+    try { require('fs').writeFileSync(updateStateFile(), JSON.stringify({ version, attempts })); } catch (_e) {}
+  }
+  return attempts;
+}
+
 function setupAutoUpdate() {
   try {
+    clearStaleUpdateState();
     const { autoUpdater } = require('electron-updater');
     autoUpdaterRef = autoUpdater;
     autoUpdater.autoDownload = true;
@@ -87,7 +129,13 @@ function setupAutoUpdate() {
     const send = (ch, data) => { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send(ch, data); };
     autoUpdater.on('update-available', (info) => send('upd:available', { version: info && info.version }));
     autoUpdater.on('download-progress', (p) => send('upd:progress', { percent: p.percent || 0, transferred: p.transferred, total: p.total }));
-    autoUpdater.on('update-downloaded', (info) => { updateReady = true; send('upd:downloaded', { version: info && info.version }); });
+    autoUpdater.on('update-downloaded', (info) => {
+      updateReady = true;
+      const version = info && info.version;
+      const attempts = noteInstallAttempt(version);
+      if (attempts >= INSTALL_FAIL_LIMIT) send('upd:failed', { version, url: DOWNLOAD_PAGE });
+      else send('upd:downloaded', { version });
+    });
     autoUpdater.on('update-not-available', (info) => send('upd:none', { version: info && info.version }));
     autoUpdater.on('error', (e) => send('upd:error', { message: String((e && e.message) || e) }));
     ipcMain.on('upd:restart', () => { relaunchAfterInstall = true; if (mainWin && !mainWin.isDestroyed()) mainWin.close(); });
@@ -99,8 +147,9 @@ function setupAutoUpdate() {
 app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm !== 'geolocation'));
   session.defaultSession.setPermissionCheckHandler((_wc, perm) => perm !== 'geolocation');
+  ipcMain.handle('app:info', () => ({ version: app.getVersion(), store: process.windowsStore === true }));
   await createWindow();
-  if (!isDev) setupAutoUpdate();
+  if (!isDev && !process.windowsStore) setupAutoUpdate();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

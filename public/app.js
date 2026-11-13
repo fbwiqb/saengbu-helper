@@ -1579,6 +1579,7 @@ function showUpd(msg, percent, ready) {
   $('#updTrack').hidden = ready || percent == null;
   if (percent != null) $('#updFill').style.width = Math.min(100, percent) + '%';
   $('#updRestart').hidden = !ready;
+  $('#updManual').hidden = true;
   $('#updNotes').hidden = false;
 }
 
@@ -1602,6 +1603,21 @@ function initUpdater() {
   window.updater.onDownloaded((d) => { state.updChecking = false; showUpd(`새 버전 ${d.version || ''} 준비 완료 — 재시작하면 적용됩니다`, 100, true); setUpdMsg(`새 버전 ${d.version || ''} 준비 완료 — 종료/재시작 시 적용`); });
   window.updater.onNone(() => { state.updChecking = false; setUpdMsg('최신 버전입니다 ✓'); });
   window.updater.onError(() => { state.updChecking = false; setUpdMsg('확인 실패 — 인터넷을 확인하세요'); });
+  if (window.updater.onFailed) window.updater.onFailed((d) => {
+    state.updChecking = false;
+    showUpd(`새 버전 ${d.version || ''} 자동 설치가 되지 않고 있어요. 설치 파일을 받아 지금 프로그램 위에 설치해 주세요. 써 둔 내용은 그대로 남아요.`, null, false);
+    $('#updManual').hidden = false;
+    $('#updManual').onclick = () => window.open(d.url, '_blank');
+    setUpdMsg(`자동 설치 실패 — 상단 ‘설치 파일 받기’로 직접 설치해 주세요 (새 버전 ${d.version || ''})`);
+  });
+  if (window.updater.info) window.updater.info().then((i) => {
+    if (!i) return;
+    if (i.version) $('#appVer').textContent = `(현재 버전 ${i.version})`;
+    if (i.store) {
+      $('#updCheckBtn').hidden = true;
+      setUpdMsg('Microsoft Store에서 자동으로 업데이트됩니다');
+    }
+  }).catch(() => {});
 }
 
 function mdLite(src) {

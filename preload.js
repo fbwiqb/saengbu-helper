@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('updater', {
   onDownloaded: (cb) => ipcRenderer.on('upd:downloaded', (_e, d) => cb(d)),
   onNone: (cb) => ipcRenderer.on('upd:none', (_e, d) => cb(d)),
   onError: (cb) => ipcRenderer.on('upd:error', (_e, d) => cb(d)),
+  onFailed: (cb) => ipcRenderer.on('upd:failed', (_e, d) => cb(d)),
+  info: () => ipcRenderer.invoke('app:info'),
   restart: () => ipcRenderer.send('upd:restart'),
   check: () => ipcRenderer.send('upd:check'),
 });
